@@ -1,0 +1,5 @@
+playwright>=1.44.0
+selenium>=4.21.0
+webdriver-manager>=4.0.1
+pyppeteer>=2.0.0
+twocaptcha-python>=1.1.3
