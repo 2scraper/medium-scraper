@@ -1,0 +1,140 @@
+name: Bug report
+description: The scraper ran but the result was wrong, empty, or it crashed.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before anything else: never paste an API key, a proxy password or a
+        full `ws://user:pass@...` endpoint into a public issue.** The scrapers
+        mask credentials in their own logs, but raw HTML dumps and the Scraper
+        API's `x-debug` header do not. Replace them with `***`.
+
+        A few things answer most reports faster than we can:
+
+        - **Everything exit 3?** That is Cloudflare's managed challenge, and
+          the first thing to check is how much that address has been
+          fetching. Measured: 8 of the first 14 fetches from one address were
+          served and everything after was refused, with a 45-minute rest not
+          enough to clear it. Raise `--delay`, rest the address, or use
+          `--proxy-file`. A captcha solve buys nothing here — a managed
+          challenge publishes no sitekey.
+        - **`upvotes`, `views`, `created_at` null on every row?** Expected if
+          you scraped a TOPIC url. A topic page's inlined payload carries 0
+          answer objects, so those columns come from nowhere. Point it at a
+          question or a profile. The `data_source` column says which view
+          built each row.
+        - **A handful of rows from a question with hundreds of answers?** The
+          session was served a short feed. Four loads of one URL gave 5, 13,
+          12 and 259 answers, and in the short ones the scroll reached the
+          document's end and the site never fetched more. Re-run it.
+        - **`title` null on some rows?** A question page carries answers to
+          OTHER questions — related ones and merged duplicates — and a few
+          name no question anywhere on the page. `question_url` is still
+          correct on those rows; inventing a title from the slug would be a
+          guess. What is NOT expected is a title that reads "Related …" or
+          one that repeats the page's own question on a row answering a
+          different one. Both of those are worth this issue.
+        - **Zero rows?** You may be on a page that has none, or on a `/search`
+          URL, which this scraper refuses: Medium answers an anonymous search
+          with the language home page rather than with results.
+          See [TROUBLESHOOTING.md](../blob/main/TROUBLESHOOTING.md).
+        - **Wrong language?** The language is the HOSTNAME (`medium.com`,
+          `jp.medium.com`), not something the exit IP decides. Note Japanese is
+          on `jp.`, not `ja.`.
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Which engine
+      options:
+        - playwright_scraper.py
+        - puppeteer_scraper.py
+        - selenium_scraper.py
+        - scraper_api_client.py
+        - fingerprint_client.py
+        - other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser_route
+    attributes:
+      label: How was the browser reached
+      options:
+        - A browser the script launched itself
+        - A remote browser over --cdp-endpoint
+        - No browser (scraper_api_client.py over plain HTTP)
+        - Not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: exit_code
+    attributes:
+      label: Exit code
+      description: >-
+        `echo $?` straight after the run. These mean specific things — 3 is a
+        challenge page, 4 is "ran fine, found nothing", 124 is a self-imposed
+        timeout. The table is in the README.
+      placeholder: "4"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact command
+      description: With credentials replaced by `***`.
+      render: shell
+      placeholder: |
+        python3 playwright_scraper.py \
+          --url "https://medium.com/topic/Machine-Learning" \
+          --pages 3 --out grills
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: >-
+        The whole run, not just the last line — the useful detail is usually
+        upstream of the error. Credentials replaced by `***`.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      placeholder: >-
+        96 products, as the README says a category page yields.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Please run and paste:
+        ```
+        python3 -c "import sys, platform; print(sys.version, platform.platform())"
+        pip list 2>/dev/null | grep -Ei "playwright|pyppeteer|selenium|beautifulsoup4|requests|webdriver"
+        python3 smoke_test.py | tail -3
+        ```
+      render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: The offline suite passes on my machine (`python3 smoke_test.py`)
+          required: true
+        - label: I removed every API key, password and credentialled URL from this report
+          required: true

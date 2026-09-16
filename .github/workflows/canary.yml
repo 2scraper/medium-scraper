@@ -1,0 +1,255 @@
+name: canary
+
+# One real run a day against medium.com, and the only workflow in this repo
+# that touches the site. tests.yml (deliberately) never does — see its own
+# header for why the two are separate.
+#
+# WHAT IT EXERCISES, and why these two URLs
+# -----------------------------------------
+# Medium serves the same catalogue through two different renderers, and the
+# URL decides which answers. A canary that only hit one of them would miss
+# half of what this repo reads:
+#
+#   1. a tag's DAY ARCHIVE, 3 days — the legacy `window["obvInit"]` payload,
+#      the per-day URL walk (the only addressable pagination on this site),
+#      and the columns only that payload carries: reading time, word count,
+#      language.
+#   2. a TAG FEED, 1 page — the modern `__APOLLO_STATE__` payload, where
+#      reading time is legitimately null and a regression would look like a
+#      site change rather than a bug.
+#
+# Three days rather than one on purpose: with a single page the pagination is
+# never exercised, which is exactly how a silently-dead page walk survives in
+# this family (§11).
+#
+# HEADLESS, on a bare runner, AND THAT IS A REAL TEST
+# ---------------------------------------------------
+# What Medium's Cloudflare hard-blocks is the `HeadlessChrome` token in the
+# User-Agent — 11 of 11 refused with it, 0 of 11 without — and this engine
+# builds its UA from the browser's own version and never sends it. So a
+# GitHub runner with no display and no proxy CAN get real data here, and this
+# canary is not a formality. It is measurably a little worse than headful
+# (6/8 served against 8/8), which is what --retries is for.
+#
+# A MEDIUM_PROXY secret is used when one is set, and is not required:
+#
+#     gh secret set MEDIUM_PROXY --repo 2scraper/medium-scraper
+#
+# It goes through the ENVIRONMENT rather than a commented-out --proxy line,
+# because env_config.py already reads exactly that variable, a credential
+# must never reach a command line (§3), and an unset secret arrives as an
+# empty string which the loader treats as "not configured". One line is
+# correct with and without it.
+#
+# WHAT FAILS THE BADGE AND WHAT ONLY WARNS
+# ----------------------------------------
+# A block (exit 3) WARNS: Cloudflare's managed challenge tracks the address's
+# recent request rate, and a shared runner's rate is not something this
+# workflow controls, so a red badge would say something about the runner
+# rather than about this code. A check that is always red teaches everyone to
+# ignore checks. But a warning must not read as a pass either, so every
+# warning path also writes to the step summary saying in words that the
+# canary did not test anything today.
+#
+# Parsing zero rows from a page the site plainly served (exit 4), or a
+# coverage floor being missed, DOES fail — that is the regression this exists
+# to catch.
+
+on:
+  schedule:
+    # 06:20 UTC. Off the hour, because everything else in the world runs on
+    # it and a queued runner adds nothing but latency.
+    - cron: "20 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the client and Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-playwright.txt
+          playwright install --with-deps chromium
+
+      - name: Pick a day the archive is likely to hold stories
+        id: day
+        # Three days back, not today: Medium's day archive is built from
+        # what has been published AND indexed, and the current day is
+        # necessarily incomplete. A day with no stories for the tag does not
+        # 404 — it redirects up to its month, which the scraper detects and
+        # reports rather than silently walking the wrong view.
+        run: echo "date=$(date -u -d '3 days ago' +%Y/%m/%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Scrape three days of a tag archive (the legacy-payload path)
+        id: archive
+        env:
+          MEDIUM_PROXY: ${{ secrets.MEDIUM_PROXY }}
+        # `set +e`: GitHub runs `run:` steps under `bash -e`, so a non-zero
+        # command aborts the step BEFORE the following echo and
+        # continue-on-error does not change that — it stops the step failing
+        # the job, not the shell's errexit.
+        run: |
+          set +e
+          python3 playwright_scraper.py \
+            --url "https://medium.com/tag/python/archive/${{ steps.day.outputs.date }}" \
+            --pages 3 --delay 20 --retries 3 --retry-delay 30 --headless \
+            --out canary_archive --format json \
+            --dump-html canary_archive.html
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Interpret the archive exit code
+        run: |
+          case "${{ steps.archive.outputs.exit_code }}" in
+            0) echo "::notice::Archive walk complete." ;;
+            3)
+              echo "::warning::Blocked before parsing (exit 3) from a bare GitHub runner. Cloudflare's challenge here tracks the address's recent request RATE, which a shared runner does not control — so this says nothing about this code and the run is not failed. It also means the site-side check did NOT happen today."
+              echo "A runner address met Cloudflare's refusal. The parser was not exercised. Set a \`MEDIUM_PROXY\` secret to give this canary an exit whose request rate it controls; a block would then fail the job, which is the point." >> "$GITHUB_STEP_SUMMARY" ;;
+            4)
+              echo "::error::Ran fine and parsed 0 rows (exit 4) from a tag archive that normally holds ~100 stories a day. The legacy payload (window[\"obvInit\"]) or its references shape has most likely moved — this is exactly the regression this canary exists to catch. The HTML dump in the artefacts tells you which."
+              exit 1 ;;
+            6)
+              echo "::warning::Partial run (exit 6). The commonest cause here is the address being refused partway through the walk: a day archive is 2.3 MB and one address went from serving a whole day to refused inside three of them. canary_archive.meta.json carries the stop_reason and which pages failed." ;;
+            *)
+              echo "::error::Unexpected exit ${{ steps.archive.outputs.exit_code }}."
+              exit 1 ;;
+          esac
+
+      - name: Sanity-check the archive run
+        if: steps.archive.outputs.exit_code == '0' || steps.archive.outputs.exit_code == '6'
+        shell: python
+        run: |
+          import json, sys
+          from pathlib import Path
+
+          rows = json.loads(Path("canary_archive.json").read_text())
+          meta = json.loads(Path("canary_archive.meta.json").read_text())
+          fail = []
+
+          # Floors, not exact figures. Three measured days were 128, 97 and
+          # 98 stories; a floor of 40 for a whole day leaves room for a quiet
+          # one and still catches a payload that stopped being read.
+          if meta["status"] == "complete" and meta["pages_completed"] < 3:
+              fail.append("status complete but only %d of 3 pages"
+                          % meta["pages_completed"])
+          if meta["pages_completed"] >= 1 and len(rows) < 40:
+              fail.append("only %d rows across %d day(s); a measured day was "
+                          "97-128" % (len(rows), meta["pages_completed"]))
+
+          # Every row of a day archive came from the legacy payload on every
+          # measurement. A row built from the DOM fallback instead means the
+          # payload stopped parsing, and the row count alone would not show
+          # it.
+          views = {r.get("data_source") for r in rows}
+          if views - {"obvinit"}:
+              fail.append("archive rows came from %s, not from the legacy "
+                          "payload alone" % sorted(views))
+
+          def share(field):
+              return sum(1 for r in rows if r.get(field) is not None) / max(len(rows), 1)
+
+          # 100% on every measurement. 0.9 leaves room for one odd story.
+          for field in ("title", "author", "url", "sku", "published_at",
+                        "claps", "responses", "reading_time_min",
+                        "word_count", "language"):
+              if share(field) < 0.9:
+                  fail.append("%s populated on only %.0f%% of rows"
+                              % (field, 100 * share(field)))
+
+          # `position` restarts at 1 on every page, so the column is
+          # worthless without `page` beside it — and a page number that was
+          # never threaded through is invisible to every other check (§18).
+          pairs = {(r.get("page"), r.get("position")) for r in rows}
+          if len(pairs) != len(rows):
+              fail.append("page+position is not unique across the run")
+
+          print("rows=%d pages=%d status=%s views=%s"
+                % (len(rows), meta["pages_completed"], meta["status"],
+                   sorted(views)))
+          if fail:
+              for f in fail:
+                  print("::error::%s" % f)
+              sys.exit(1)
+
+      - name: Scrape a tag feed (the modern-payload path)
+        id: feed
+        env:
+          MEDIUM_PROXY: ${{ secrets.MEDIUM_PROXY }}
+        run: |
+          set +e
+          sleep 30
+          python3 playwright_scraper.py \
+            --url "https://medium.com/tag/python" \
+            --retries 3 --retry-delay 30 --headless \
+            --out canary_feed --format json --dump-html canary_feed.html
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Sanity-check the tag-feed run
+        if: steps.feed.outputs.exit_code == '0'
+        shell: python
+        run: |
+          import json, sys
+          from pathlib import Path
+
+          rows = json.loads(Path("canary_feed.json").read_text())
+          fail = []
+          if len(rows) < 15:
+              fail.append("only %d rows; a measured tag feed gave 42-53"
+                          % len(rows))
+          if not any(r.get("claps") is not None for r in rows):
+              fail.append("no row carries a clap count, and the modern "
+                          "payload carries one on every story it describes")
+          # The documented asymmetry, asserted rather than assumed: a
+          # tag-feed row has NO reading time because the payload does not
+          # contain one. If this ever starts being populated, the README is
+          # wrong and a whole paragraph of it needs rewriting.
+          if any(r.get("reading_time_min") is not None for r in rows):
+              fail.append("a tag-feed row carried a reading time — the "
+                          "payload now has one, and the README's explanation "
+                          "of why that column is null in tag mode is stale")
+          if any(r.get("data_source") == "dom" for r in rows):
+              fail.append("a row was built from the rendered card alone")
+          print("rows=%d" % len(rows))
+          if fail:
+              for f in fail:
+                  print("::error::%s" % f)
+              sys.exit(1)
+
+      - name: Interpret the tag-feed exit code
+        run: |
+          case "${{ steps.feed.outputs.exit_code }}" in
+            0) echo "::notice::Tag feed complete." ;;
+            3) echo "::warning::Tag feed blocked (exit 3) — see the note on the archive step." ;;
+            4)
+              echo "::error::Parsed 0 rows from a tag feed the site served. The Apollo state or its Post shape has moved."
+              exit 1 ;;
+            *) echo "::warning::Tag feed exited ${{ steps.feed.outputs.exit_code }}." ;;
+          esac
+
+      - name: Upload what the run actually saw
+        # On EVERY run, passing or not: a canary that only keeps its
+        # artefacts when it fails cannot be compared against the day it
+        # stopped working.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-artefacts
+          path: |
+            canary_archive.json
+            canary_archive.meta.json
+            canary_archive.html
+            canary_feed.json
+            canary_feed.meta.json
+            canary_feed.html
+          if-no-files-found: ignore
+          retention-days: 14
