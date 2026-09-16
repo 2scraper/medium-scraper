@@ -630,6 +630,21 @@ def test_pagination():
           redirected_away(archive, archive) is None)
     check("tracking on the landed URL is not a redirect",
           redirected_away(archive, archive + "?source=x") is None)
+    # Measured 2026-09-16: `www.medium.com/tag/python` is served on 4 of 4
+    # attempts and lands on `medium.com/tag/python`. That is a HOST redirect
+    # and must not read as a pagination one — the comparison is on the PATH
+    # for this reason, and a host-only difference is not a different listing.
+    check("a www -> apex redirect is not a pagination redirect",
+          redirected_away("https://www.medium.com/tag/python/archive/2026/09/10",
+                          "https://medium.com/tag/python/archive/2026/09/10")
+          is None)
+    check("...and www is a supported host",
+          is_supported_host("https://www.medium.com/tag/python")
+          and is_medium_host("www.medium.com"))
+    # A publication's custom domain is served too (measured: challenged on
+    # three attempts, served on the fourth) and its story URLs carry the id.
+    check("a custom-domain publication's story is a post",
+          listing_kind("https://python.plainenglish.io/x-3e7d4b4b6c72") == "post")
 
     check("PAGINATES_BY_URL is true for this repo", PAGINATES_BY_URL is True)
     check("the reason names what does and does not paginate",
@@ -1452,6 +1467,39 @@ def test_fingerprint_is_read_through_the_shared_helper():
     return ok
 
 
+def test_fingerprint_cache_is_key_aware():
+    group("a cached fingerprint must not make a bad key look good")
+    ok = True
+    import fingerprint_client as fc
+
+    params = {"format": "chromium", "tags": "Windows", "country": "us"}
+    a = fc._cache_path("/tmp", params, False, "key-one")
+    b = fc._cache_path("/tmp", params, False, "key-two")
+    same = fc._cache_path("/tmp", params, False, "key-one")
+    # Measured 2026-09-16 before this was fixed: get_fingerprint() with the
+    # key "deadbeef"*4 returned fingerprint 5393493 off disk and raised
+    # nothing, because a REAL key had cached the same parameters earlier. A
+    # user whose fingerprint subscription lapsed would see --fingerprint keep
+    # working on their own machine and 401 on a fresh one — §16's "a path
+    # that looks like it works", in the one place this family has already
+    # been bitten five times.
+    ok &= check("two keys do not share a cache entry", a != b)
+    ok &= check("the same key is stable across calls", a == same)
+    ok &= check("different parameters still differ",
+                a != fc._cache_path("/tmp", {**params, "country": "de"},
+                                    False, "key-one"))
+    # The key must not be recoverable from the path it produces.
+    ok &= check("the key never reaches the filename",
+                "key-one" not in a and len(pathlib.Path(a).stem) == 16)
+    # And the caller must actually pass it — a key-aware helper nobody hands
+    # a key to is the §17 defect this family names dead policy.
+    src = open(os.path.join(REPO_ROOT, "fingerprint_client.py"),
+               encoding="utf-8").read()
+    ok &= check("get_fingerprint passes the key to the cache path",
+                src.count("_cache_path(cache_dir, params, generate, api_key)") == 2)
+    return ok
+
+
 def test_proxy_pool():
     group("Credentials never reach argv or a log")
     ok = True
@@ -1563,6 +1611,149 @@ def test_driver_primitives_tolerate_a_navigation():
                     break
             else:
                 ok &= check(f"{engine} has {name}", False)
+    return ok
+
+
+def test_concurrency_machinery(skips):
+    """§10: drive the worker pool with the browser stubbed out.
+
+    A live run cannot reach this. Page 1 is fetched alone and its answer
+    decides whether the rest may be addressed, so a blocked page 1 means the
+    workers never start — and on this site page 1 is blocked often enough
+    that a live test would pass by not running.
+
+    The pool only exists in the Playwright engine (Selenium and pyppeteer
+    walk the days one at a time and say so), which is why this group targets
+    that engine alone.
+    """
+    group("the archive worker pool, with no browser in it")
+    ok = True
+    try:
+        import playwright_scraper as eng
+    except ImportError:
+        skips.append("playwright_scraper (playwright not installed)")
+        return ok
+
+    import threading
+    import types
+
+    class _Args:
+        delay = 0
+        out = "unused"
+
+    def _run(pages, behaviour, concurrency=3):
+        """Drive the real dispatcher against a stubbed session + fetcher.
+
+        `behaviour(page_num)` returns the PageOutcome for that page, or
+        raises to simulate a worker dying.
+        """
+        seen, lock = [], threading.Lock()
+        fake_session = types.SimpleNamespace(
+            pool=None, close=lambda: None, open=lambda: fake_session)
+
+        def fake_fetch(session, args, pool, page_num, url):
+            with lock:
+                seen.append(page_num)
+            return behaviour(page_num, url)
+
+        real_session, real_fetch, real_pw = (
+            eng._BrowserSession, eng._fetch_one_page, eng.sync_playwright)
+        eng._BrowserSession = lambda *a, **k: fake_session
+        eng._fetch_one_page = fake_fetch
+        # The dispatcher opens a Playwright context per worker; hand it one
+        # that does nothing rather than launching three real browsers.
+        #
+        # A real CLASS, not a SimpleNamespace with `__enter__` attached:
+        # Python looks dunder methods up on the TYPE, so an instance
+        # attribute named `__enter__` is never called and `with` raises —
+        # which the worker's own except-clause swallows, leaving a test that
+        # "passes" against zero workers. It cost this check a debugging pass.
+        class _NoPlaywright:
+            def __enter__(self):
+                return None
+
+            def __exit__(self, *exc):
+                return False
+
+        eng.sync_playwright = _NoPlaywright
+        try:
+            specs = [(n, "https://medium.com/tag/python/archive/2026/09/%02d" % n)
+                     for n in pages]
+            return eng._fetch_pages_concurrently(_Args(), None, specs,
+                                                 concurrency), seen
+        finally:
+            eng._BrowserSession, eng._fetch_one_page, eng.sync_playwright = (
+                real_session, real_fetch, real_pw)
+
+    def good(page_num, url, rows=3):
+        o = eng.PageOutcome(page_num=page_num, url=url)
+        o.products = [Post(sku="%012x" % (page_num * 1000 + i), url=url,
+                           title="t%d" % i) for i in range(rows)]
+        o.state = "content"
+        return o
+
+    # 1. Every queued page is fetched EXACTLY once. A page fetched twice is
+    #    paid for twice and deduped silently; a page fetched zero times is a
+    #    hole the run would report as complete.
+    (results, unattempted, exhausted), seen = _run(
+        list(range(2, 10)), lambda n, u: good(n, u))
+    ok &= check("every queued day is fetched", sorted(seen) == list(range(2, 10)))
+    ok &= check("...exactly once", len(seen) == len(set(seen)))
+    ok &= check("every fetch produced an outcome", len(results) == 8)
+    ok &= check("nothing is left unattempted when all succeed", unattempted == [])
+    ok &= check("the end-of-listing event did not fire", not exhausted)
+
+    # 2. Outcomes come back in ARRIVAL order and must be restorable to PAGE
+    #    order — §8's "merge in page order, not arrival order". With workers
+    #    the two genuinely differ.
+    ordered = sorted(results, key=lambda o: o.page_num)
+    ok &= check("outcomes carry their page number",
+                [o.page_num for o in ordered] == list(range(2, 10)))
+    ok &= check("...and each kept its own URL",
+                all(str(o.page_num).zfill(2) in o.url for o in ordered))
+
+    # 3. A day with no rows ends dispatch. Without this, asking for 40 days
+    #    of a tag that published on three fetches 37 empty ones.
+    def empty_after_4(page_num, url):
+        return good(page_num, url, rows=0 if page_num >= 4 else 3)
+
+    (results, unattempted, exhausted), seen = _run(
+        list(range(2, 40)), empty_after_4, concurrency=2)
+    ok &= check("an empty day stops dispatch", exhausted)
+    ok &= check("...and most of the queue is never fetched", len(seen) < 12)
+    ok &= check("...with the unfetched days reported, not counted as failed",
+                len(unattempted) == 38 - len(seen))
+    ok &= check("unattempted days are page NUMBERS, in order",
+                unattempted == sorted(unattempted))
+
+    # 4. A worker that raises must not hang the run and must not take its
+    #    siblings' pages with it. This is the one that would otherwise be
+    #    discovered as a hung CI job.
+    def explode_on_5(page_num, url):
+        if page_num == 5:
+            raise RuntimeError("simulated worker death")
+        return good(page_num, url)
+
+    (results, unattempted, exhausted), seen = _run(
+        list(range(2, 8)), explode_on_5, concurrency=2)
+    ok &= check("a dying worker does not hang the run", True)  # reaching here IS the check
+    ok &= check("...and its siblings' pages still arrive",
+                {o.page_num for o in results} >= {2, 3, 4})
+    ok &= check("...and nothing claims the dead worker's pages succeeded",
+                5 not in {o.page_num for o in results})
+
+    # 5. The pool is refused where it cannot help, and that refusal is DATA
+    #    rather than three copies of an if-chain.
+    ok &= check("a day archive may use workers",
+                page_flow.concurrency_limit(
+                    "https://medium.com/tag/python/archive/2026/09/10") is None)
+    for url in ("https://medium.com/tag/python",
+                "https://medium.com/@someone",
+                "https://medium.com/p/d373fe2c96b7"):
+        ok &= check("%s is capped at one worker" % url,
+                    page_flow.concurrency_limit(url) == 1)
+        ok &= check("...with a reason naming the day archive",
+                    "day archive" in (page_flow.concurrency_refusal(url) or ""))
     return ok
 
 
@@ -2264,9 +2455,11 @@ def main() -> int:
     ok &= test_diff()
     ok &= test_env_config()
     ok &= test_fingerprint_is_read_through_the_shared_helper()
+    ok &= test_fingerprint_cache_is_key_aware()
     ok &= test_proxy_pool()
     ok &= test_credentials_never_reach_a_log()
     ok &= test_driver_primitives_tolerate_a_navigation()
+    ok &= test_concurrency_machinery(skips)
     ok &= test_engine_parity(skips)
     ok &= test_module_attributes_exist(skips)
     ok &= test_no_dead_public_names()

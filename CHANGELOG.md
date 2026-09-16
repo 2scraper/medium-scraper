@@ -40,7 +40,7 @@ contract and no tests. Nothing of that survives except the licence.
   catalogue where Medium states it.
 - `diff_runs.py`, which compares two runs by `sku` and refuses a pair whose
   modes differ or which are not both complete.
-- An offline suite of over 650 checks with fixtures cut from real captures by
+- An offline suite of over 700 checks with fixtures cut from real captures by
   `make_fixtures.py`, which proves each fixture parses identically to its
   untrimmed original — column for column — and replaces every real author
   handle with a pseudonym before anything is written to disk.
@@ -67,6 +67,14 @@ contract and no tests. Nothing of that survives except the licence.
   archive days, and **55 rows from an author page against a local browser's
   10**: that feed extends by scrolling, the scroll is refused from an
   ordinary address and is not refused from the Scraping Browser's exit.
+- **`--fingerprint` works, and the five defects §16 names are all absent** —
+  the user agent reaches the browser, the locale is derived by LANGUAGE
+  (`jp` → `ja-JP`, not `jp-JP`), the timezone is applied, `--tags Windows`
+  is accepted, and a 401 carries no key. One NEW defect of the same family
+  was found and fixed: the on-disk fingerprint cache was keyed on the request
+  parameters and not on the API key, so a bogus key returned a cached
+  fingerprint and raised nothing. The same code is in every sibling repo and
+  is unfixed there.
 - **The Scraping Browser's auto-solve extension injects `cf-turnstile` into
   every page it serves** — counted 16 `chrome-extension://` references and 1
   `cf-turnstile` on a 403 KB page holding 60 stories. The extension-script

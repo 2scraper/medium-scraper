@@ -102,8 +102,24 @@ GENERATE_URL = f"{API_BASE}/fingerprint/generate"
 DEFAULT_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "2captcha-fingerprints")
 
 
-def _cache_path(cache_dir: str, params: dict, generate: bool) -> str:
+def _cache_path(cache_dir: str, params: dict, generate: bool,
+                api_key: str = "") -> str:
+    """Where a fingerprint for these parameters is cached.
+
+    The API KEY is part of the cache key, and that is not about privacy — the
+    digest is one-way and the key never reaches the filename. It is because a
+    cache keyed on the request alone makes a BAD key look like a good one:
+    measured 2026-09-16, `get_fingerprint("deadbeef"*4, ...)` returned
+    fingerprint 5393493 from disk and raised nothing, because a real key had
+    fetched the same parameters earlier. A user whose fingerprint
+    subscription lapsed would see `--fingerprint` keep working on their own
+    machine and 401 on a fresh one (§16: a path that looks like it works).
+
+    Keying on the key costs one extra fetch per key and makes a 401 a 401.
+    """
     key = json.dumps({"generate": generate, **params}, sort_keys=True)
+    if api_key:
+        key += "\x00" + hashlib.sha256(api_key.encode()).hexdigest()[:16]
     digest = hashlib.sha256(key.encode()).hexdigest()[:16]
     return os.path.join(cache_dir, f"{digest}.json")
 
@@ -137,7 +153,7 @@ def get_fingerprint(api_key: str, *, tags: Optional[str] = None,
         params["build_version"] = build_version
 
     if cache_dir:
-        path = _cache_path(cache_dir, params, generate)
+        path = _cache_path(cache_dir, params, generate, api_key)
         if os.path.exists(path) and not refresh:
             with open(path, encoding="utf-8") as f:
                 fp = json.load(f)
@@ -187,7 +203,7 @@ def get_fingerprint(api_key: str, *, tags: Optional[str] = None,
 
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
-        with open(_cache_path(cache_dir, params, generate), "w", encoding="utf-8") as f:
+        with open(_cache_path(cache_dir, params, generate, api_key), "w", encoding="utf-8") as f:
             json.dump(fp, f, indent=2)
     logger.info("Fingerprint %s (%s) — %s", fp.get("id"), fp.get("country"),
                 (fingerprint_user_agent(fp) or "no user agent in response")[:70])
