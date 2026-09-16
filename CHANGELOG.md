@@ -60,6 +60,18 @@ contract and no tests. Nothing of that survives except the licence.
   Cloudflare's managed challenge, which publishes no sitekey and renders no
   iframe. Nothing is ever charged for it; the challenge is retried in a fresh
   browser context instead, which cleared all 9 of the 9 measured.
+- **Both paid 2Captcha paths were run and are complete.** The Scraper API
+  returned HTTP 200 on all four modes at $0.0005 a request, with rows
+  identical to a local browser's — including the whole 2.3 MB archive-day
+  payload in one request. The Scraping Browser returned 254 rows over two
+  archive days, and **55 rows from an author page against a local browser's
+  10**: that feed extends by scrolling, the scroll is refused from an
+  ordinary address and is not refused from the Scraping Browser's exit.
+- **The Scraping Browser's auto-solve extension injects `cf-turnstile` into
+  every page it serves** — counted 16 `chrome-extension://` references and 1
+  `cf-turnstile` on a 403 KB page holding 60 stories. The extension-script
+  filter keeps that classified as content rather than as a challenge; without
+  it the run would have reported exit 3 on good data.
 - **`reading_time_min`, `word_count` and `language` are null on a tag-feed
   row** and populated on an archive, author or story row, because a tag
   feed's payload does not contain them. That is the site, and `data_source`

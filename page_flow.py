@@ -474,13 +474,15 @@ def feed_not_extended_warning(mode: str, rows: int,
     return (f"{trace.get('rounds', 0)} round(s) of scrolling added no cards "
             f"({before} -> {after}; a drop means Medium replaced the feed's "
             f"DOM, which costs this run nothing because the rows come from "
-            f"the page's payload). That is normally the site rather than the "
+            f"the page's payload). That is the ADDRESS rather than the "
             f"scroll: the feed extends over a POST to medium.com/_/graphql, "
-            f"and from a refused address every one of those POSTs comes back "
-            f"403 while the page itself comes back 200. What the first "
-            f"response shipped is what this run gets. Use --mode archive on "
-            f"a tag's day URLs for volume — one address, up to 128 stories, "
-            f"and it can be run with --concurrency.")
+            f"and from a refused address every one of those came back 403 "
+            f"while the page itself came back 200. Two things do change it, "
+            f"both measured: --cdp-endpoint, where the same author page grew "
+            f"10 cards to 60 across 8 rounds and yielded 55 rows against 10; "
+            f"and --mode archive, where a tag's day URLs give up to 128 "
+            f"stories per fetch from any address and can be walked with "
+            f"--concurrency.")
 
 
 # ---------------------------------------------------------------------------

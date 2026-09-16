@@ -189,17 +189,35 @@ it. Nothing is ever charged for a block here.
 
 ## Do I need to pay for anything?
 
-**No.** Every number on this page was taken with Playwright's own bundled
-Chromium, from an ordinary datacentre address, with no 2Captcha key and no
-proxy.
+**No.** Every number in the tables above was taken with Playwright's own
+bundled Chromium, from an ordinary datacentre address, with no 2Captcha key
+and no proxy.
 
-What the paid [2Captcha](https://2captcha.com) products buy is the thing that
-actually limits a long run: **rate**. An archive walk pulls 2.3 MB per day
-URL, and one address went from serving a whole day to the hard WAF refusal
-inside three of them. `--delay` is the cheaper lever; `--proxy-file` is the
-one that scales.
+What the paid [2Captcha](https://2captcha.com) products do buy here was
+measured on 2026-09-16, and it is not "getting in":
 
-Captcha solving specifically buys nothing here — see above.
+| path | what it got | what it costs |
+|---|---|---|
+| **Scraper API** (`scraper_api_client.py`) | all four modes, HTTP 200, rows **identical** to a local browser's — including the whole 2.3 MB archive day in one request | $0.0005 a request, no browser at all |
+| **Scraping Browser** (`--cdp-endpoint`) | 254 rows over two archive days; **55 rows from an author page against a local browser's 10** | one live connection per profile |
+
+The author-page figure is the interesting one. An author's feed extends by
+scrolling, and from an ordinary address that scroll adds nothing — the POST
+to `medium.com/_/graphql` is refused while the page itself is served. Over
+the Scraping Browser it is **not** refused: the same page grew from 10
+rendered cards to 60 across 8 scroll rounds. Those extra rows come from the
+cards rather than the payload, so they carry a title, an author and a URL but
+no clap count — `data_source` says `dom` on each of them, and they feed
+straight into `--mode post`.
+
+**Captcha solving specifically buys nothing here.** Medium's refusal is
+Cloudflare's managed challenge, which publishes no sitekey, so this scraper
+never spends a solve on a block and nothing is ever charged for one.
+
+And the thing that actually limits a long run is **rate**: an archive walk
+pulls 2.3 MB per day URL, and one address went from serving a whole day to
+the hard WAF refusal inside three of them. `--delay` is the cheaper lever;
+`--proxy-file` is the one that scales.
 
 ---
 
@@ -210,7 +228,7 @@ Captcha solving specifically buys nothing here — see above.
 | **Playwright** | `requirements-playwright.txt` | primary. The only engine with the `--concurrency` worker pool. |
 | **Selenium** | `requirements-selenium.txt` | drives the installed Chrome. Cannot use `--cdp-endpoint` (chromedriver's `debuggerAddress` takes a bare `host:port` with nowhere for a password) and cannot authenticate a proxy. |
 | **pyppeteer** | `requirements-puppeteer.txt` | **pass `--chromium-path`.** Its bundled Chromium is build 117.0.5938.0, two years old, and because the User-Agent is built from the browser's own version the engine truthfully announces `Chrome/117` — refused 3 times out of 3. Pointed at the installed Chrome it returned 53 rows first try. |
-| **Scraper API** | `scraper_api_client.py` | 2Captcha's hosted browser over HTTP. |
+| **Scraper API** | `scraper_api_client.py` | 2Captcha's hosted browser over HTTP. Measured complete on all four modes at $0.0005 a request; cannot scroll, which only costs rows on an author page. |
 
 **Install exactly one.** The three declare mutually unsatisfiable pins
 (`pyee` <12 vs ≥13, `urllib3` <2.0 vs ≥2.6). Use a virtualenv per engine if

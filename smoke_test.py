@@ -2212,6 +2212,26 @@ def test_readme_claims():
     # The engine table's pyppeteer row names the build it was refused on.
     ok &= check("the pyppeteer limitation names the Chromium build",
                 "117.0.5938.0" in readme)
+
+    # The two paid paths were unverified in the first version of this repo
+    # and are now measured. Both directions are pinned: a docstring that
+    # still says UNMEASURED after the numbers exist is stale, and numbers
+    # written without a run are the thing §13 forbids. If a future change
+    # removes the ability to measure them, the label comes back and this
+    # check is what says so.
+    api = open(os.path.join(REPO_ROOT, "scraper_api_client.py"),
+               encoding="utf-8").read()
+    ok &= check("the Scraper API path carries its measurements",
+                "MEASURED 2026-09-16" in api and "2,305,814" in api)
+    ok &= check("...and no longer claims to be unmeasured",
+                "UNMEASURED" not in api)
+    ok &= check("the README records what the paid paths bought",
+                "Scraper API" in readme and "Scraping Browser" in readme
+                and "$0.0005" in readme)
+    # The author-page figure is the one that changes what a reader would buy,
+    # so it is pinned by number rather than by the word.
+    ok &= check("...including the author-page figure",
+                "55 rows" in readme and "10" in readme)
     return ok
 
 

@@ -6,40 +6,36 @@ One HTTP request per page, no local browser, no Playwright install. The
 the HTML; this client parses it with the same `product_parser` the browser
 engines use, so the rows and columns are identical.
 
-NOT MEASURED AGAINST MEDIUM. READ THIS BEFORE TRUSTING IT.
-----------------------------------------------------------
-Every other path in this repo carries live numbers taken on 2026-09-16. This
-one carries none, because no 2Captcha key was available when it was written,
-and §16 of this family's playbook is explicit that a credential-gated path
-nobody ran is the path most likely to be broken — five of the six defects the
-third repo in this family found were in exactly such code, inherited and
-green for months.
+MEASURED 2026-09-16, $0.0005 A REQUEST
+-------------------------------------
+All four modes, one request each, no browser anywhere and no proxy:
 
-So this file is PORTED, not verified. What follows is what the site's shape
-predicts, clearly labelled as prediction:
+    --mode tag        HTTP 200,   361,092 bytes,   53 rows,  5.4s
+    --mode archive    HTTP 200, 2,305,814 bytes,  128 rows,  8.3s
+    --mode author     HTTP 200,   229,266 bytes,   10 rows, 59.5s
+    --mode post       HTTP 200,   219,654 bytes,    1 row,   6.8s
 
-  * It should do WELL here, better than on the sibling site this client came
-    from. Medium server-renders its data: a tag feed's first response already
-    carries 34 stories in `__APOLLO_STATE__` and a day archive carries 128 in
-    `window["obvInit"]`, before anything paints. A client that returns the
-    served response rather than a rendered DOM therefore has the whole
-    payload to read.
+The rows are not merely present, they are IDENTICAL to what a local browser
+produced on the same URLs: the same 128 stories on the archive day with 100%
+coverage of claps, reading time, word count and language, the same 248 claps
+/ 15.54 minutes / 3,801 words on the same story, and the same
+18,352-character body in post mode.
 
-  * Its one structural limitation — that it cannot scroll — should cost
-    nothing. Scrolling was measured adding zero stories on this site, because
-    the XHR that would extend a feed came back 403 on all 11 attempts while
-    the page itself came back 200.
+So this is the cheapest complete path on this site, and the archive day is
+what it is best at — one request returns the whole 2.3 MB legacy payload,
+which is the richest thing Medium publishes.
 
-  * `--mode archive` should be the mode to use it for: one request, up to
-    128 stories, and the day URLs are independent so a walk is just more
-    requests.
+WHAT IT CANNOT DO, and it costs nothing here
+--------------------------------------------
+It returns the SERVED response rather than a rendered DOM, so it cannot
+scroll. On a tag feed that costs nothing: the feed does not extend from an
+ordinary address anyway. On an AUTHOR page it does cost something — the same
+page over the Scraping Browser (`--cdp-endpoint` on a browser engine) scrolls
+10 cards up to 60 and yields 55 rows against this path's 10.
 
-  * The unknown is whether the API's own exit gets past Cloudflare at all,
-    and at what rate. Nothing in this repo can answer that without a key.
-
-If you have a key: run it, and open an issue with what you got. The numbers
-belong in this docstring and in the README, and an unmeasured claim belongs
-in neither.
+So: reach for this for `--mode archive` and `--mode post`, where it is
+complete and cheapest; reach for a browser engine over `--cdp-endpoint` when
+you want an author page's whole output.
 
     python3 scraper_api_client.py \\
         --url "https://medium.com/tag/python/archive/2026/09/10"
@@ -259,9 +255,9 @@ def _run_once(args, attempt: int = 1, attempts: int = 1) -> int:
                        "page should never parse to zero here: check the dump "
                        "for Cloudflare's block page (5 KB, 'you have been "
                        "blocked') or its managed challenge (28 KB, 'Just a "
-                       "moment'). This path is UNMEASURED against Medium — "
-                       "see the module docstring — so please open an issue "
-                       "with what the dump contains.", dump)
+                       "moment'). All four modes were measured returning "
+                       "HTTP 200 and full rows on 2026-09-16, so zero here "
+                       "is worth an issue.", dump)
         return 4
 
     return save(products, args.out, args.format, allow_empty=args.allow_empty)
@@ -270,11 +266,12 @@ def _run_once(args, attempt: int = 1, attempts: int = 1) -> int:
 def parse_args():
     p = argparse.ArgumentParser(
         description="Medium story scraper — 2captcha Scraper API edition "
-                    "(no local browser). UNMEASURED against Medium: no key "
-                    "was available when it was written, so unlike every "
-                    "other path in this repo it carries no live numbers. See "
-                    "the module docstring for what the site's shape predicts "
-                    "and what is unknown.")
+                    "(no local browser). Measured 2026-09-16 at $0.0005 a "
+                    "request: all four modes returned HTTP 200 and rows "
+                    "identical to a local browser's, including the whole "
+                    "2.3 MB archive-day payload in one request. It cannot "
+                    "scroll, which costs nothing except on an author page — "
+                    "see the module docstring.")
     # NOT required: prefer the TWOCAPTCHA_KEY env var. A key passed on the
     # command line is visible to anyone who can run `ps`, and it lands in
     # shell history and in any log that echoes the command line.
