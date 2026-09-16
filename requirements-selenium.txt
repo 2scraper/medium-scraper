@@ -1,0 +1,24 @@
+# Selenium engine.
+#
+#   pip install -r requirements.txt -r requirements-selenium.txt
+#
+# No browser download step, and on this site that is an advantage rather than
+# a detail: chromedriver drives the Google Chrome you already have, which is
+# exactly the browser Vrbo answers. The Playwright engine has to be told
+# (`playwright install chrome`); this one gets it for free.
+#
+# Selenium 4.6+ resolves chromedriver itself through Selenium Manager, so
+# there is nothing else to install.
+#
+# Two limits this engine cannot work around, both reported loudly at runtime
+# rather than half-working:
+#
+#   * it CANNOT authenticate a proxy — `--proxy-server` takes an address with
+#     nowhere to put a password, and there is no Selenium equivalent of
+#     pyppeteer's page.authenticate;
+#   * it CANNOT attach to an authenticated remote CDP endpoint —
+#     chromedriver's `debuggerAddress` is a bare host:port, so the 2Captcha
+#     Scraping Browser API is out of reach from here.
+#
+# Use playwright_scraper.py or puppeteer_scraper.py for either.
+selenium>=4.15.0
