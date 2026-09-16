@@ -375,6 +375,21 @@ def test_the_four_read_paths():
           product_parser._js_to_json(r'"a\\\\x3e"') == r'"a\\\\x3e"')
     check("a lone JS hex escape is rewritten to its JSON spelling",
           product_parser._js_to_json(r'"a\x3eb"') == r'"a\u003eb"')
+
+    # The fixtures are a COMMITTED artefact, so regenerating them from the
+    # same captures must produce the same bytes. It did not: the scrub
+    # discovered handles through a set, whose iteration order depends on
+    # string hashing, and Python randomises that per process — so every
+    # regeneration reassigned the pseudonyms and churned the file. A
+    # committed artefact nobody can review a diff of is not reviewable.
+    import make_fixtures
+    sample = "//alpha.medium.com/x /@beta /@alpha /@gamma-long-handle"
+    first = make_fixtures._discovered_handles(sample)
+    check("handle discovery returns a stable order",
+          first == make_fixtures._discovered_handles(sample))
+    check("...longest first, so a prefix is not half-replaced",
+          [len(h) for h in first] == sorted((len(h) for h in first),
+                                            reverse=True))
     check("the modern state is absent from an archive day",
           posts_from_apollo(arch, URLS["archive_day"]) == {})
 

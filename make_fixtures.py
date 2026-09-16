@@ -412,13 +412,19 @@ def _discovered_handles(text):
     a writer whose node the trim never visited. Finding them by shape closes
     that whole class rather than one instance of it.
     """
-    found = set()
-    for handle in re.findall(r"/@([A-Za-z0-9_][\w.-]{0,60})", text):
-        found.add(handle)
+    found = set(re.findall(r"/@([A-Za-z0-9_][\w.-]{0,60})", text))
     for sub in re.findall(r"//([a-z0-9][a-z0-9-]{0,60})\.medium\.com", text):
         if sub not in _ASSET_SUBDOMAINS:
             found.add(sub)
-    return {h for h in found if not h.startswith("fixture-author")}
+    # SORTED, and returned as a list. A set's iteration order depends on
+    # string hashing, which Python randomises per process — so regenerating
+    # the fixtures assigned the pseudonyms in a different order every time
+    # and produced a different file from identical captures. A committed
+    # artefact that churns on every regeneration is one nobody can review.
+    # Longest first, so a handle that is a prefix of another is not
+    # half-replaced; name second, to break ties the same way every run.
+    return sorted((h for h in found if not h.startswith("fixture-author")),
+                  key=lambda h: (-len(h), h))
 
 
 def depersonalise(text, names):
@@ -453,7 +459,7 @@ def depersonalise(text, names):
 
     # Then whatever the payload trims never saw. Longest first, so a handle
     # that is a prefix of another is not half-replaced.
-    for handle in sorted(_discovered_handles(text), key=len, reverse=True):
+    for handle in _discovered_handles(text):
         text = re.sub(
             r"(?<![A-Za-z0-9_])%s(?![A-Za-z0-9_])" % re.escape(handle),
             names.handle(handle), text)
