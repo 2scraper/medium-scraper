@@ -161,9 +161,14 @@ WordPress; its pages carry no Medium payload at all. The scraper refuses it
 with that reason rather than with "is not a Medium site", which would be
 false and would send you looking for a typo.
 
-**Medium ships reCAPTCHA markup on every page it serves**, for its own
-sign-in widget — 3 to 4 `g-recaptcha` occurrences on pages known to be good.
-It is not a challenge and this scraper does not treat it as one.
+**Medium ships reCAPTCHA Enterprise on every page it serves.** Measured on
+four pages known to be good: `recaptcha/enterprise.js?render=<sitekey>` — the
+v3 invisible pattern — plus two more sitekeys in Medium's own page config,
+and 3 to 4 `g-recaptcha` class references. **Zero** of those captures
+rendered a challenge: 0 `api2/anchor` iframes, nothing for a reader to
+answer. What Medium uses the score for is not visible from outside, so this
+page does not guess; what matters here is that it never gates a story, and
+this scraper does not treat it as a challenge.
 
 ---
 

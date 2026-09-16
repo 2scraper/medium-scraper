@@ -70,7 +70,7 @@ WHAT IS DIFFERENT ABOUT THIS SITE
   is ever charged to a solver for them.
 
 * **Medium ships reCAPTCHA markup on every page it serves**, for its own
-  sign-in widget: 3-4 `g-recaptcha` and 4-17 `recaptcha` occurrences on
+  own Enterprise integration: 3-4 `g-recaptcha` and 4-17 `recaptcha` occurrences on
   pages known to be good, against 0 on the challenge page. The family's
   usual reCAPTCHA marker is a false positive here and is deliberately not in
   the marker set (§18).
