@@ -353,6 +353,28 @@ def test_the_four_read_paths():
     arch = fixture("archive_day")
     check("the legacy payload describes an archive day",
           len(posts_from_obvinit(arch, URLS["archive_day"])) == 6)
+
+    # `window["obvInit"](...)` is a JAVASCRIPT object literal, not JSON.
+    # Medium escapes `>` as `\x3e` so a `</script>` inside a string cannot
+    # close the tag it sits in, and `\xHH` is not legal JSON — one such
+    # character in a Thai image alt-text made `json.loads` reject a 970 KB
+    # payload, and the whole page silently fell through to the DOM path: 120
+    # rows with titles and authors and every other column null, reported as a
+    # success. Found by walking four consecutive days rather than one.
+    escaped = fixture("archive_escape")
+    check("a payload carrying a JS \\xHH escape still parses",
+          len(posts_from_obvinit(escaped, URLS["archive_escape"])) == 4)
+    rows = rows_of("archive_escape")
+    check("...and its rows come from the payload, not the DOM fallback",
+          {r.data_source for r in rows} == {"obvinit"})
+    check("...with the columns only that payload carries",
+          all(r.claps is not None and r.reading_time_min is not None
+              for r in rows))
+    # The rewrite must not touch a backslash that was itself escaped.
+    check("an escaped backslash before an x is left alone",
+          product_parser._js_to_json(r'"a\\\\x3e"') == r'"a\\\\x3e"')
+    check("a lone JS hex escape is rewritten to its JSON spelling",
+          product_parser._js_to_json(r'"a\x3eb"') == r'"a\u003eb"')
     check("the modern state is absent from an archive day",
           posts_from_apollo(arch, URLS["archive_day"]) == {})
 

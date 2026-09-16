@@ -79,6 +79,11 @@ SOURCES = {
                      "https://medium.com/tag/python", 6),
     "archive_day":  ("arch_day.html",
                      "https://medium.com/tag/python/archive/2026/09/10", 6),
+    # A day whose payload carries a JavaScript `\x3e` escape inside an image
+    # alt-text. Not JSON, and it cost a whole page its payload before the
+    # parser learned to rewrite it — kept as a fixture so it cannot regress.
+    "archive_escape": ("arch_day_badescape.html",
+                       "https://medium.com/tag/python/archive/2026/09/07", 4),
     "author":       ("author_profile.html",
                      "https://medium.com/@quincylarson", 4),
     "post":         ("post_free.html",

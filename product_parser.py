@@ -462,6 +462,29 @@ _APOLLO_RE = re.compile(
     r"window\.__APOLLO_STATE__\s*=\s*(\{.*?\})\s*;?\s*</script>", re.S)
 _OBVINIT_RE = re.compile(r'window\["obvInit"\]\((\{.*?\})\)\s*//\s*\]\]>', re.S)
 
+# `window["obvInit"](...)` is a JAVASCRIPT object literal, not JSON, and the
+# difference bites on exactly one construct: Medium escapes `>` as `\x3e` so
+# that a `</script>` inside a string cannot close the script tag it is in.
+# `\xHH` is legal JavaScript and is NOT legal JSON, so `json.loads` rejects
+# the whole 970 KB payload over one character.
+#
+# Found by running four consecutive archive days rather than one: three
+# parsed and the fourth — a story whose Thai image alt-text contained
+# `text -\x3e input_ids` — did not. The DOM fallback caught it and returned
+# 120 rows with titles and authors and NOTHING else, which is the shape of
+# this failure: not a crash, not an empty run, just a whole page quietly
+# demoted to the thinnest of the four read paths (§15).
+#
+# Rewritten to the JSON spelling of the same character rather than decoded,
+# so string contents are untouched. The lookbehind counts backslashes: an
+# even number means the `\x` is itself escaped and must be left alone.
+_JS_HEX_ESCAPE = re.compile(r"(?<!\\)((?:\\\\)*)\\x([0-9a-fA-F]{2})")
+
+
+def _js_to_json(text: str) -> str:
+    return _JS_HEX_ESCAPE.sub(lambda m: "%s\\u00%s" % (m.group(1), m.group(2)),
+                              text)
+
 
 def apollo_state(html: Optional[str]) -> Dict[str, Any]:
     """The modern page state, or an empty dict.
@@ -491,7 +514,7 @@ def obvinit_payload(html: Optional[str]) -> Dict[str, Any]:
     if not match:
         return {}
     try:
-        data = json.loads(match.group(1))
+        data = json.loads(_js_to_json(match.group(1)))
     except ValueError as exc:
         logger.warning('window["obvInit"] present but unparseable: %s', exc)
         return {}

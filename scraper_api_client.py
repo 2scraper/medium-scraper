@@ -6,47 +6,45 @@ One HTTP request per page, no local browser, no Playwright install. The
 the HTML; this client parses it with the same `product_parser` the browser
 engines use, so the rows and columns are identical.
 
-WHAT IT GETS, AND WHAT IT CANNOT GET — measured 2026-09-15, $0.0005 a request
------------------------------------------------------------------------------
-This path is unusually good on one URL kind and useless on another, and the
-reason is the same fact that shapes the whole repo: Medium renders nothing on
-the server, but it does inline its own GraphQL results into the response.
+NOT MEASURED AGAINST MEDIUM. READ THIS BEFORE TRUSTING IT.
+----------------------------------------------------------
+Every other path in this repo carries live numbers taken on 2026-09-16. This
+one carries none, because no 2Captcha key was available when it was written,
+and §16 of this family's playbook is explicit that a credential-gated path
+nobody ran is the path most likely to be broken — five of the six defects the
+third repo in this family found were in exactly such code, inherited and
+green for months.
 
-    a QUESTION url    HTTP 200, 264,581 bytes
-                      6 answers, 6 of 6 payload-backed
-                      upvotes, views, creationTime, numeric ids and the FULL
-                      answer text all populated
+So this file is PORTED, not verified. What follows is what the site's shape
+predicts, clearly labelled as prediction:
 
-    a TOPIC url       HTTP 200, 99,833 bytes
-                      3 inline payloads carrying 0 Answer objects
-                      0 rendered cards -> 0 rows, classified `shell`
+  * It should do WELL here, better than on the sibling site this client came
+    from. Medium server-renders its data: a tag feed's first response already
+    carries 34 stories in `__APOLLO_STATE__` and a day archive carries 128 in
+    `window["obvInit"]`, before anything paints. A client that returns the
+    served response rather than a rendered DOM therefore has the whole
+    payload to read.
 
-So it is the RICHEST path this repo has, per row, on a question page — better
-than a browser engine's first batch, which reads most of its rows off cards
-that carry none of those columns. And it cannot read a topic feed at all,
-because a topic's answers arrive over a later XHR and this returns the served
-response rather than a rendered DOM.
+  * Its one structural limitation — that it cannot scroll — should cost
+    nothing. Scrolling was measured adding zero stories on this site, because
+    the XHR that would extend a feed came back 403 on all 11 attempts while
+    the page itself came back 200.
 
-`--wait-element` does not change that, which was worth checking rather than
-assuming: the same topic URL with `--wait-element 'a.answer_timestamp'` spent
-sixteen seconds instead of three and returned the same 99,847-byte shell with
-the same 0 cards. Whatever the API waits on, it is not handing back the
-hydrated document.
+  * `--mode archive` should be the mode to use it for: one request, up to
+    128 stories, and the day URLs are independent so a walk is just more
+    requests.
 
-What is missing on both is any completeness oracle — but the browser path has
-none either, because Medium publishes no per-page counter anywhere (see
-`page_flow.page_gap`). The difference is that a browser engine can keep
-scrolling and this cannot.
+  * The unknown is whether the API's own exit gets past Cloudflare at all,
+    and at what rate. Nothing in this repo can answer that without a key.
 
-So: reach for this when you want a question's answers cheaply and in full, and
-use a browser engine when you want a topic feed or more than the first batch.
-
-    python3 scraper_api_client.py \\
-        --url "https://medium.com/What-is-machine-learning-4"
+If you have a key: run it, and open an issue with what you got. The numbers
+belong in this docstring and in the README, and an unmeasured claim belongs
+in neither.
 
     python3 scraper_api_client.py \\
-        --url "https://medium.com/topic/Machine-Learning" \\
-        --wait-element 'a.answer_timestamp'
+        --url "https://medium.com/tag/python/archive/2026/09/10"
+
+    python3 scraper_api_client.py --url "https://medium.com/tag/python"
 
     # $TWOCAPTCHA_KEY is read from the environment or .env, so a key never
     # has to be typed — a secret in argv is readable by anything that can run
@@ -249,19 +247,21 @@ def _run_once(args, attempt: int = 1, attempts: int = 1) -> int:
         return 3
 
     products = parse_posts(html, args.url, mode=listing_kind(args.url))
-    logger.info("Parsed %d answer(s).", len(products))
+    logger.info("Parsed %d stor(ies).", len(products))
 
     if not products:
         dump = f"{args.out}_scraperapi_debug.html"
         with open(dump, "w", encoding="utf-8") as f:
             f.write(html)
-        logger.warning("0 answers parsed — saved the raw response to %s so "
-                       "you can see what actually came back. On a TOPIC URL "
-                       "this is the expected result without --wait-element: "
-                       "Medium sends a topic's answers over a later XHR, so a "
-                       "fetch that does not render returns a shell. A "
-                       "QUESTION URL carries its first answers in the "
-                       "served payload and needs no wait.", dump)
+        logger.warning("0 stories parsed — saved the raw response to %s so "
+                       "you can see what actually came back. Medium "
+                       "server-renders both of its payloads, so a served "
+                       "page should never parse to zero here: check the dump "
+                       "for Cloudflare's block page (5 KB, 'you have been "
+                       "blocked') or its managed challenge (28 KB, 'Just a "
+                       "moment'). This path is UNMEASURED against Medium — "
+                       "see the module docstring — so please open an issue "
+                       "with what the dump contains.", dump)
         return 4
 
     return save(products, args.out, args.format, allow_empty=args.allow_empty)
@@ -269,13 +269,12 @@ def _run_once(args, attempt: int = 1, attempts: int = 1) -> int:
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="Medium answer scraper — 2captcha Scraper API edition "
-                    "(no local browser). Measured: a QUESTION url yields 6 "
-                    "answers with every column populated for $0.0005, and a "
-                    "TOPIC url yields ZERO — with or without --wait-element — "
-                    "because a topic's answers arrive over a later XHR and "
-                    "this returns the served response. Use a browser engine "
-                    "for a topic feed.")
+        description="Medium story scraper — 2captcha Scraper API edition "
+                    "(no local browser). UNMEASURED against Medium: no key "
+                    "was available when it was written, so unlike every "
+                    "other path in this repo it carries no live numbers. See "
+                    "the module docstring for what the site's shape predicts "
+                    "and what is unknown.")
     # NOT required: prefer the TWOCAPTCHA_KEY env var. A key passed on the
     # command line is visible to anyone who can run `ps`, and it lands in
     # shell history and in any log that echoes the command line.
