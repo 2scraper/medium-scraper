@@ -9,7 +9,7 @@ author page, story page) — this is deliberate, not scoped to any one page.
 
 **Medium HAS a captcha configured and does not render one to an anonymous
 reader.** Measured 2026-09-16 across six good captures: reCAPTCHA markup for
-Medium's own sign-in widget is on every page it serves — 3 to 4 `g-recaptcha`
+Medium's own reCAPTCHA Enterprise is on every page it serves — 3 to 4 `g-recaptcha`
 occurrences and 15 to 17 of `recaptcha` — wired, mounted, never challenged.
 That is precisely why neither string is in
 `product_parser.BOT_CHALLENGE_MARKERS`: a marker present on every good page
@@ -444,7 +444,9 @@ def reconcile_detections(html_challenge: Optional[CaptchaChallenge],
 
     (Medium's own version of that asymmetry, measured 2026-09-16: every page
     the MODERN renderer serves carries reCAPTCHA's `api.js` loader and 3 to 4
-    `g-recaptcha` class references for the sign-in widget — and ZERO
+    `g-recaptcha` class references for its own Enterprise integration —
+    loaded as `recaptcha/enterprise.js?render=<sitekey>`, the v3 invisible
+    pattern — and ZERO
     `data-sitekey` attributes, because the widget is never configured for an
     anonymous reader. A static-HTML detector sees a widget declared; a
     runtime detector sees nothing rendered and nothing to solve. Both are

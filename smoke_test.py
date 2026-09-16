@@ -32,7 +32,7 @@ a sibling. The ones worth knowing about before you change anything:
     wrongly, and no coverage check would have said a word.
 
   * `test_markers_do_not_match_a_good_page` is the §18 rule as a test. Medium
-    ships reCAPTCHA markup for its own sign-in widget on every page it
+    ships reCAPTCHA Enterprise on every page it
     serves, and `challenge-platform` appears twice on good and refused pages
     alike. A marker that matches every page is worse than no marker, so every
     marker in every set is asserted ABSENT from four pages known to be good.
@@ -727,7 +727,7 @@ def test_markers_do_not_match_a_good_page():
 
     # EVERY marker in EVERY set, asserted absent from four pages Medium
     # actually served. This is the check that would have caught `g-recaptcha`
-    # — which Medium ships on every page for its own sign-in widget, 3 to 4
+    # — which Medium ships on every page as Enterprise v3 invisible, 3 to 4
     # occurrences per page — before it made a good 364 KB tag feed report
     # "challenge: recaptcha".
     for name in GOOD_PAGES:
@@ -761,7 +761,7 @@ def test_markers_do_not_match_a_good_page():
           not any("challenge-platform" in m
                   for m in CHALLENGE_MARKERS + BOT_CHALLENGE_MARKERS
                   + BLOCK_MARKERS))
-    # Same for reCAPTCHA, which Medium's sign-in widget ships everywhere.
+    # Same for reCAPTCHA, which Medium ships on every page it serves.
     check("no reCAPTCHA marker is in any set",
           not any("recaptcha" in m.lower()
                   for m in CHALLENGE_MARKERS + BOT_CHALLENGE_MARKERS

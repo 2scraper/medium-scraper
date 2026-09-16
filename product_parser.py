@@ -1118,10 +1118,12 @@ CHALLENGE_MARKERS: Tuple[str, ...] = (
 # short by measurement rather than by omission.
 #
 # `g-recaptcha` and `recaptcha` are DELIBERATELY ABSENT, and this is the
-# reason: Medium ships reCAPTCHA markup for its own sign-in widget on every
-# page it serves — counted 3, 0, 4 and 3 occurrences of `g-recaptcha` and 15,
-# 4, 16 and 17 of `recaptcha` on four pages known to be good, against 0 on
-# the challenge page and 0 on the WAF block. The family's usual reCAPTCHA
+# reason: Medium ships reCAPTCHA Enterprise on every page it serves —
+# counted 3, 0, 4 and 3 occurrences of `g-recaptcha` and 15, 4, 16 and 17 of
+# `recaptcha` on four pages known to be good, against 0 on the challenge page
+# and 0 on the WAF block. None of those four rendered a challenge (0
+# `api2/anchor` iframes), so it is a fact about the site rather than a
+# signal. The family's usual reCAPTCHA
 # marker is a false positive on this site, and including it made a perfectly
 # good 364 KB tag feed report "challenge: recaptcha". A marker that matches
 # every page is worse than no marker (§18); both entries below were counted
