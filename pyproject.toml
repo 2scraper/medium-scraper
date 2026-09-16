@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "medium-scraper"
-version = "0.1.0"
+version = "0.1.1"
 description = "Medium story scraper: tag feeds, tag day archives, author profiles and single stories, with reading times, claps and full text."
 readme = "README.md"
 license = "MIT"
