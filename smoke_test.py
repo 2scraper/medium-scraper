@@ -794,13 +794,18 @@ def test_markers_do_not_match_a_good_page():
     return not _failures
 
 
-def test_challenge_is_not_solvable():
-    group("nothing is charged for a challenge with nothing to solve")
+def test_a_challenge_is_never_paid_for_here():
+    group("no solve is ever bought for a challenge this repo does not intercept")
 
     html = fixture("challenge")
-    # Cloudflare's MANAGED challenge: `cType: 'managed'`, no sitekey, no
-    # iframe. There is nothing to hand 2Captcha, so the policy must not
-    # spend a solve on it.
+    # Cloudflare's MANAGED challenge: `cType: 'managed'`, no sitekey and no
+    # iframe IN THE MARKUP. That is a fact about the markup, not about the
+    # challenge — Cloudflare passes sitekey/action/cData/chlPageData to
+    # `turnstile.render()` once and keeps nothing, and a repo that installs
+    # an init script to capture them can buy a TurnstileTaskProxyless solve
+    # (foodpanda-scraper does). This repo deliberately does not, because the
+    # challenge here is transient: 9 of 27 first attempts met it and a fresh
+    # context cleared all 9. So the policy must not spend a solve on it.
     check("the fixture really is the managed kind", "managed" in html)
     check("it publishes no sitekey", "data-sitekey" not in html)
     check("it renders no iframe", "<iframe" not in html.lower())
@@ -827,6 +832,82 @@ def test_challenge_is_not_solvable():
         check("%s consults RETRY_NEEDS_FRESH_CONTEXT" % engine,
               "RETRY_NEEDS_FRESH_CONTEXT" in src)
     return not _failures
+
+
+def test_captcha_capability_claims_match_the_code():
+    """§19: a sentence is the most expensive bug this family can ship.
+
+    Two directions, and both have been shipped wrong in this family before:
+
+      * claiming a captcha CANNOT be solved, when what is true is that this
+        repo does not implement the task type. 2Captcha solves enterprise
+        reCAPTCHA and Cloudflare Turnstile and has for years, so a sentence
+        like "neither is solvable" tells a reader not to buy something that
+        would have worked. "Unsolvable" is a property of a PAGE that carries
+        no widget, never of the vendor.
+      * claiming this repo DOES solve something whose task type is not built
+        anywhere in it, which is the same error facing the other way.
+
+    Nothing else in the suite can catch either one: no test fails, no run
+    crashes and the output is correct.
+    """
+    group("captcha capability claims (§19)")
+    ok = True
+    docs = {}
+    for name in ("README.md", "CHANGELOG.md"):
+        path = os.path.join(REPO_ROOT, name)
+        if os.path.exists(path):
+            docs[name] = open(path, encoding="utf-8", errors="replace").read()
+
+    # A conclusion about the PRODUCT. Phrases about a widget-less page
+    # ("no widget", "nothing for a solver at any price to answer") are
+    # deliberately NOT here: that page really does carry nothing to answer.
+    FORBIDDEN = (
+        "cannot be solved",
+        "can't be solved",
+        "neither is solvable",
+        "is not solvable",
+        "solver is inapplicable",
+        "no solver can",
+    )
+    for name, text in docs.items():
+        low = text.lower()
+        for phrase in FORBIDDEN:
+            hit = phrase in low
+            # A released CHANGELOG section is history and is left verbatim;
+            # a correction leads the newer section instead (§19).
+            if hit and name == "CHANGELOG.md":
+                continue
+            ok &= check(f"{name}: no {phrase!r} — write "
+                        f"'this repo does not implement X' instead", not hit)
+
+    # And the other direction: a claim that something IS solved here has to
+    # be backed by a task type and, for Turnstile, by the interception hook
+    # that is the only way to obtain a Challenge page's parameters.
+    solver = open(os.path.join(REPO_ROOT, "captcha_solver.py"),
+                  encoding="utf-8").read()
+    engines = " ".join(_engine_source(e) or "" for e in ENGINES)
+    readme_low = docs.get("README.md", "").lower()
+
+    claims_turnstile = ("turnstile" in readme_low
+                        and "does not implement" not in readme_low)
+    if claims_turnstile:
+        ok &= check("README claims Turnstile solving, so the task type exists",
+                    "TurnstileTaskProxyless" in solver)
+        ok &= check("...and an engine installs the turnstile.render hook",
+                    "TURNSTILE_INTERCEPT_JS" in engines)
+    else:
+        ok &= check("README does not claim Turnstile solving — nothing to back",
+                    True)
+
+    # Whatever a task type is built for, the solver must actually be able to
+    # name it. A builder with no consumer is the dead-code defect wearing a
+    # capability's clothes.
+    for task in ("TurnstileTaskProxyless", "RecaptchaV2EnterpriseTaskProxyless"):
+        if task in solver:
+            ok &= check(f"{task} is reachable from an engine",
+                        "solve_recaptcha" in engines or "solve_turnstile" in engines)
+    return ok
 
 
 def test_page_flow_policy():
@@ -2446,7 +2527,8 @@ def main() -> int:
     ok &= test_pagination()
     ok &= test_page_state()
     ok &= test_markers_do_not_match_a_good_page()
-    ok &= test_challenge_is_not_solvable()
+    ok &= test_a_challenge_is_never_paid_for_here()
+    ok &= test_captcha_capability_claims_match_the_code()
     ok &= test_page_flow_policy()
     ok &= test_scroll_loop()
     ok &= test_throttle_is_not_completion()

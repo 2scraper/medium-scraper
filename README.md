@@ -168,7 +168,10 @@ and 3 to 4 `g-recaptcha` class references. **Zero** of those captures
 rendered a challenge: 0 `api2/anchor` iframes, nothing for a reader to
 answer. What Medium uses the score for is not visible from outside, so this
 page does not guess; what matters here is that it never gates a story, and
-this scraper does not treat it as a challenge.
+this scraper does not treat it as a challenge. It therefore does not
+implement `RecaptchaV2EnterpriseTaskProxyless` either — 2Captcha solves that
+task type, and there has simply never been a rendered challenge here to hand
+it.
 
 ---
 
@@ -185,10 +188,27 @@ Two different pages, and only one of them is worth retrying:
   Waiting inside the same context never cleared one, so `--retries` opens a
   new context between attempts.
 
-Neither is solvable. A managed challenge publishes **no sitekey** — 0
-`data-sitekey` attributes and 0 iframes on the one measured — so there is
-nothing to hand a captcha solver, and this scraper never spends a solve on
-it. Nothing is ever charged for a block here.
+**The WAF refusal carries no widget at all** — no sitekey, no iframe, nothing
+for a solver at any price to answer. A different User-Agent is the only
+answer to that one.
+
+The managed challenge is a different case, and the distinction decides
+whether a 2Captcha key would help you, so this page is precise about it. It
+publishes **no sitekey in the markup** — 0 `data-sitekey` attributes and 0
+iframes on the one measured. That is a fact about the markup and not about
+the challenge: Cloudflare passes `sitekey`, `action`, `cData` and
+`chlPageData` to `turnstile.render()` once and keeps nothing, so no static
+read of the HTML can build a solvable task, however careful. Those arguments
+can be captured with an init script installed on the context before any page
+script runs, and 2Captcha solves what comes out as `TurnstileTaskProxyless`.
+
+**This repo does not implement that interception**, and the reason is the
+measurement above rather than any limit of the solver: the challenge here is
+transient — 9 of 27 first attempts met it, and all 9 were served in full on
+the next attempt in a fresh context. A retry costs nothing and a solve costs
+money, so this scraper never spends one and nothing is ever charged for a
+block here. If you need it on a site where the challenge is not transient,
+`foodpanda-scraper` in this family implements the interception and solves it.
 
 ---
 

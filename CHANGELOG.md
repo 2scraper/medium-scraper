@@ -9,6 +9,46 @@ default changes because a measurement said it should, that is called out at
 the top of the release rather than left to be discovered from a bill or an
 empty output file.
 
+## [0.1.1] — 2026-09-16
+
+> **Correction to v0.1.0.** That release's README said of Medium's two
+> refusal pages: *"Neither is solvable … there is nothing to hand a captcha
+> solver."* The first half is true — the WAF refusal carries no widget. The
+> second is not: a Cloudflare **managed challenge** publishes no sitekey *in
+> the markup*, but Cloudflare passes `sitekey`, `action`, `cData` and
+> `chlPageData` to `turnstile.render()` once, those arguments can be captured
+> with an init script, and 2Captcha solves the result as
+> `TurnstileTaskProxyless`. The sentence told readers a 2Captcha key would
+> not help them here, which is a claim about the product and was wrong. What
+> is true is narrower and is now what the README says: **this repo does not
+> implement that interception**, because the challenge here is transient and
+> a retry in a fresh context cleared 9 of 9 measured.
+
+### Fixed
+
+- **README no longer claims a captcha cannot be solved.** The measurements
+  are unchanged — 0 `data-sitekey` attributes and 0 iframes on the managed
+  challenge, 9 of 27 first attempts challenged, all 9 served on the next
+  attempt in a fresh context. Only the conclusion drawn from them changed,
+  from "not solvable" to "not implemented here, and here is why that is the
+  cheaper choice on this site".
+- **The reCAPTCHA Enterprise paragraph** now says plainly that this repo does
+  not implement `RecaptchaV2EnterpriseTaskProxyless`, rather than leaving a
+  reader to infer that nothing could be done. Medium ships the loader on
+  every page and has never rendered a challenge to answer.
+- **`test_challenge_is_not_solvable` is renamed**
+  `test_a_challenge_is_never_paid_for_here`. Its assertions are unchanged and
+  still correct; the name asserted something about 2Captcha that the test
+  never measured.
+
+### Added
+
+- **`test_captcha_capability_claims_match_the_code`** — a guard in both
+  directions. It fails the build on a documented conclusion that a captcha
+  cannot be solved, and equally on a README that claims this repo solves
+  Turnstile when the task type or the `turnstile.render` interception is
+  absent. Verified by reverting the README sentence: the check goes red.
+
 ## [0.1.0] — 2026-09-16
 
 First release. A complete rewrite: the repository previously held three
