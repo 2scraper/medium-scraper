@@ -308,6 +308,33 @@ EXIT_API_ERROR = 5
 EXIT_PARTIAL = 6
 
 
+# Exit code for a run that never GOT its pages: a navigation timeout, a dead
+# or unauthenticated proxy, a DNS failure, or an edge answering with
+# something that is not the page that was asked for.
+#
+# Distinct from EXIT_NO_PRODUCTS because those are opposite facts. Exit 4 is
+# a statement about the CATALOGUE — "we asked, and the answer was nothing" —
+# so handing it to a run that never reached the site tells a pipeline the
+# listing is empty when nothing was read at all.
+#
+# 5 rather than a new number, and 5 rather than EXIT_PARTIAL:
+#
+#   * this family's contract already reserves 5 for a transport failure
+#     (scraper_api_client has used it for a remote API error since it was
+#     written), so this needs no new code and no per-repo table for a caller
+#     driving more than one of these scrapers;
+#   * EXIT_PARTIAL (6) means "some rows were gathered and the output is
+#     incomplete". A run holding nothing writes no output at all, so a
+#     consumer that reads the file on a 6 finds either nothing or the
+#     PREVIOUS run's good data, which `save` deliberately does not
+#     overwrite. Exit 5 promises no file.
+#
+# Deliberately NOT applied when rows WERE gathered: a timeout on page 7 of
+# 10 is a partial run (exit 6, output written), which is already right. This
+# decides only what a run holding nothing reports.
+EXIT_FETCH_FAILED = 5
+
+
 def write_run_meta(out_prefix: str, meta: dict) -> str:
     """Write a run-metadata sidecar next to the output, return its path.
 
@@ -504,7 +531,7 @@ def finish_run(rows: Sequence[Any], out_prefix: str, fmt: str,
             print(f"[!] Failed run: 0 of {pages_requested} page(s) were "
                   f"fetched ({stop_reason}). This is NOT an empty result — "
                   f"nothing was read from the site at all.")
-            return EXIT_PARTIAL
+            return EXIT_FETCH_FAILED
         return rc
     if not complete:
         print(f"[!] Partial run: stopped after {pages_completed} of "
