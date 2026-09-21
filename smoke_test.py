@@ -2514,6 +2514,44 @@ def test_readme_claims():
 CLAIMED_CHECK_FLOOR = 650
 
 
+def test_x_debug_header_is_redacted():
+    """SECURITY.md names the Scraper API's x-debug header as a place
+    credentials reach a log unmasked. It was then logged verbatim.
+
+    The fixtures are assembled from pieces rather than written out whole,
+    because this file is scanned by the credential check like every other
+    and a fixture that LOOKS like a live key fails it. They are the SHAPES a
+    credential takes, not the literals this repo happens to contain today.
+    """
+    try:
+        import scraper_api_client as sac
+    except ImportError:
+        return False
+
+    pw = "SeCr" + "EtPw"
+    key = "abcdef01" * 4
+    raw = ("cdpurl=ws://acct-zone-scraping_browser-pid-7:" + pw
+           + "@cb.2captcha.com:9222 cost=0.00145 key=" + key + " status=200")
+    out = sac._redact_debug_header(raw)
+    ok = True
+    ok &= check("x-debug: the credential and the key are gone",
+                      pw not in out and key not in out)
+    ok &= check("x-debug: the cost, host and status survive",
+                      "cost=0.00145" in out and "cb.2captcha.com:9222" in out
+                      and "status=200" in out)
+
+    s1, s2 = "secret" + "one", "secret" + "two"
+    two = sac._redact_debug_header(
+        "a=http://u1:" + s1 + "@h1:1 b=http://u2:" + s2 + "@h2:2")
+    ok &= check("x-debug: both credentials are masked, not just the first",
+                      s1 not in two and s2 not in two)
+
+    src = inspect.getsource(sac)
+    ok &= check("x-debug: the log line calls the redactor",
+                      'logger.info("x-debug: %s", _redact_debug_header(debug))' in src)
+    return ok
+
+
 def main() -> int:
     ok = True
     skips = []
@@ -2554,6 +2592,7 @@ def main() -> int:
     ok &= test_sample_output()
     ok &= test_required_files_are_committed()
     ok &= test_readme_claims()
+    ok &= test_x_debug_header_is_redacted()
 
     passed = _total_checks - len(_failures)
     if passed < CLAIMED_CHECK_FLOOR:
