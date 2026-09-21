@@ -73,7 +73,7 @@ from fingerprint_client import (fingerprint_user_agent,
 import page_flow
 import product_parser
 from diff_runs import diff_products
-from output_writer import (Post, Product, save, finish_run, write_csv,
+from output_writer import (EXIT_FETCH_FAILED, Post, Product, save, finish_run, write_csv,
                            run_meta, dedupe_by_key, dedupe_by_sku,
                            ROW_CLASS_BY_MODE, UNIQUE_BY_SKU_MODES,
                            COMPLETE_STOP_REASONS, EXIT_BLOCKED,
@@ -1275,13 +1275,13 @@ def test_writers_and_finish_run():
         # pipeline branching on the exit code, which is what this family
         # says exit codes are for, would have recorded an empty catalogue.
         code, meta = run([], "page_load_timeout", allow_empty=True)
-        ok &= check("0 rows because nothing was FETCHED is exit 6, not 4",
-                    code == EXIT_PARTIAL)
+        ok &= check("0 rows because nothing was FETCHED is exit 5, not 4",
+                    code == EXIT_FETCH_FAILED)
         ok &= check("and the sidecar says failed, not complete",
                     meta is not None and meta["status"] == "failed")
         code, meta = run([], "next_batch_refused", allow_empty=True)
-        ok &= check("a refused batch with no rows is exit 6 too",
-                    code == EXIT_PARTIAL)
+        ok &= check("a refused batch with no rows is exit 5 too",
+                    code == EXIT_FETCH_FAILED)
         code, meta = run([], "blocked_cloudflare", blocked=True, allow_empty=True)
         ok &= check("but a BLOCK still outranks both, at exit 3",
                     code == EXIT_BLOCKED)
