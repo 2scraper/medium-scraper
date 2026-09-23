@@ -188,11 +188,11 @@ class PageOutcome:
     blocked_by: Optional[str] = None
     load_failed: bool = False
     state: Optional[str] = None
-    # How many answers the QUESTION has in total, where the site states one.
-    # NOT a per-page counter and never used as one: a question page renders
-    # twelve answers and reports 253, so reading it as a gap would claim 241
-    # missing cards on a page that rendered everything it was going to. It
-    # goes in the sidecar beside what the run actually read, which is what
+    # How many stories the TAG holds in total, where the site states one.
+    # NOT a per-page counter and never used as one: a tag feed renders a
+    # first batch of a much larger catalogue, so reading it as a gap would
+    # claim missing cards on a page that rendered everything it was going to.
+    # It goes in the sidecar beside what the run actually read, which is what
     # makes the difference between the two visible rather than assumed.
     tag_total_posts: Optional[int] = None
     # None, always, on this site: Medium publishes no per-page counter, and an
@@ -209,16 +209,10 @@ class PageOutcome:
         return not self.load_failed and self.blocked_by is None
 
 
-# The lowest share of rows that must carry an author and an answer body
-# before the read is suspect. Measured across four captures in two
-# languages: 30/30, 30/30, 18/18 and 13/13 — every card that rendered
-# carried both, on every one. So the floor sits high; 90% leaves room for a
-# deleted author without hiding a broken read.
-#
-# There is deliberately NO credential floor beside it. 28/30, 27/30, 14/18
-# and 10/13 carried one, and the gap is authors who have not written a
-# credential rather than a parse that missed it — a threshold there would
-# fire on a correct read of a topic full of new writers.
+# The lowest share of rows that must carry a title and an author before the
+# read is suspect. Every measured run in the README carried both on 100% of
+# rows, in every mode, so the floor sits high; 90% leaves room for a deleted
+# author without hiding a broken read.
 FIELD_FLOOR = 90
 
 
@@ -263,8 +257,8 @@ def _scroll_to_bottom(page) -> None:
     """Scroll the WINDOW to the end of the document.
 
     The opposite of a sibling repo, where the body never scrolled and the
-    results lived in an inner container. Measured on Medium: this took a topic
-    feed from 20 cards to 30 in two rounds and grew the document with it.
+    results lived in an inner container. On Medium the window itself is what
+    scrolls, and the document grows with the feed.
 
     To `document.body.scrollHeight` rather than by a fixed wheel distance: a
     fixed wheel stopped three rounds short of the bottom on a sibling site's
@@ -607,14 +601,14 @@ def handle_captcha_if_present(page, args) -> bool:
     render one to an anonymous reader. Which challenge a visitor meets
     depends on the exit country and on what the address has been doing, and a
     narrow detector is how a rendered challenge gets reported as an empty
-    topic months later.
+    tag months later.
     """
     html = _content_when_settled(page)
     if html is None:
         return False
 
     # Detected is not the same as blocking. A challenge on a page whose
-    # answers are already rendered guards nothing, and counting the anchors is
+    # stories are already rendered guards nothing, and counting the anchors is
     # instant — which is why this check sits here rather than after the
     # readiness wait. The other way round would cost 25 wasted seconds on a
     # page the challenge genuinely gates, where solving FIRST is what makes
@@ -922,7 +916,7 @@ def _fetch_one_page(session, args, pool, page_num: int, url: Optional[str]) -> P
                         "the run is reported as partial rather than "
                         "complete.", state_now)
                     return outcome
-                # Ours, still served, and no more answers came. On an
+                # Ours, still served, and no more stories came. On an
                 # infinite scroll that is the only ending there is.
                 outcome.state = "exhausted"
                 outcome.final_url = session.page.url
@@ -1083,7 +1077,7 @@ def _fetch_one_page(session, args, pool, page_num: int, url: Optional[str]) -> P
             session.page.wait_for_timeout, selector, threshold, content_timeout)
         session.page.wait_for_timeout(500)
         if found < threshold:
-            logger.info("No answer cards appeared within %.0fs. If this feed "
+            logger.info("No story cards appeared within %.0fs. If this feed "
                         "genuinely holds nothing, that is the expected "
                         "answer and the run will report 0 rows (exit 4).",
                         content_timeout / 1000)
@@ -1448,9 +1442,9 @@ def scrape(args) -> int:
     extra = {
         "scroll": {o.page_num: o.scroll for o in outcomes if o.scroll},
         "rows_new_per_batch": fresh_by_batch,
-        # What the QUESTION holds, where the site states it. Beside
+        # What the TAG holds, where the site states it. Beside
         # `rows` in the sidecar rather than subtracted from it: the
-        # difference is Medium rendering a fraction of a large question, not
+        # difference is Medium rendering a fraction of a large tag, not
         # a gap this run failed to close (§8 — an unknown gap is not a gap).
         "tag_total_posts": tag_total_posts,
         "inline_payload_rows": sum(1 for r in all_rows
@@ -1487,22 +1481,23 @@ def parse_args():
                         "default, and passing one that disagrees with the "
                         "URL is an error rather than an override: the mode is "
                         "a property of the path. All four yield the same "
-                        "row. What differs is how much of it Medium sends — a "
-                        "question or profile page carries its answers in the "
-                        "page, a topic page does not, so upvotes, views, "
-                        "creation time and the full answer text are null on "
-                        "topic rows. The data_source column says which.")
+                        "row. What differs is how much of it Medium sends — "
+                        "reading time, word count and language are null on a "
+                        "tag-feed row, and the story body is read in post "
+                        "mode only. The data_source column says which view "
+                        "built each row.")
     p.add_argument("--category", default=None,
                    help="Label to tag output rows with. Filled from the URL "
-                        "by default — the topic, profile or question slug — "
-                        "so it is rarely empty.")
+                        "by default — the tag or the author — so it is rarely "
+                        "empty.")
     p.add_argument("--pages", type=int, default=1,
-                   help=f"Number of scroll BATCHES to walk (default 1, cap "
-                        f"{PAGE_CAP}). Medium has no per-page address in any "
-                        f"mode: `?page=2` does not fail, it is ignored and "
-                        f"the feed returns its first items again. So a batch "
-                        f"is one settled scroll, batches are strictly "
-                        f"sequential, and --concurrency cannot help.")
+                   help=f"Number of pages to walk (default 1, cap {PAGE_CAP}). "
+                        f"In --mode archive a page is one DAY, with its own "
+                        f"address, and page N is the day N-1 days earlier. "
+                        f"Every other mode has no per-page address — "
+                        f"`?page=2` is ignored and the feed returns its "
+                        f"first items again — so a page there is one settled "
+                        f"scroll batch.")
     p.add_argument("--delay", type=float, default=3.0,
                    help="Delay between batches, seconds (default 3.0). The "
                         "rate matters more than the address on this site: "
@@ -1510,17 +1505,18 @@ def parse_args():
                         "took the Cloudflare challenge rate from one-in-four "
                         "to three-in-three. This is the cheapest lever.")
     p.add_argument("--concurrency", type=int, default=1, metavar="N",
-                   help="Accepted for family compatibility and REFUSED above "
-                        "1, with the reason: a Medium feed has no per-page "
-                        "address, so batch 5 exists only inside the browser "
-                        "that scrolled through batches 1-4 and there is "
-                        "nothing to hand a second worker. Run several topics "
-                        "or profiles in parallel instead, one process each.")
+                   help="Parallel workers, --mode archive only, where each "
+                        "day is an independent address (default 1). REFUSED "
+                        "above 1 everywhere else, with the reason: a tag or "
+                        "author feed has no per-page address, so batch 5 "
+                        "exists only inside the browser that scrolled "
+                        "through batches 1-4. Run several tags or authors in "
+                        "parallel instead, one process each.")
     p.add_argument("--retries", type=int, default=3,
                    help="Attempts per page load before giving up (default 3). "
                         "The pause between attempts doubles each time. A page "
                         "that comes back EMPTY is not retried — see "
-                        "page_flow.STATE_POLICY — because an empty search is "
+                        "page_flow.STATE_POLICY — because an empty feed is "
                         "a correct answer, not a fault.")
     p.add_argument("--retry-delay", type=float, default=2.0,
                    help="Seconds before the first page-load retry, doubling "
@@ -1674,8 +1670,8 @@ def parse_args():
     if why:
         # Refused rather than attempted. The parser's card hooks, its path
         # patterns and its scroll pagination are all this site's, so pointing
-        # it at another Q&A site would not fail loudly — it would return zero
-        # rows and look like an empty topic.
+        # it at another site would not fail loudly — it would return zero
+        # rows and look like an empty tag.
         p.error(why)
 
     # Tracking parameters are stripped rather than kept. Medium hangs a

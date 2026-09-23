@@ -2,10 +2,8 @@
 #
 #   pip install -r requirements.txt -r requirements-selenium.txt
 #
-# No browser download step, and on this site that is an advantage rather than
-# a detail: chromedriver drives the Google Chrome you already have, which is
-# exactly the browser Vrbo answers. The Playwright engine has to be told
-# (`playwright install chrome`); this one gets it for free.
+# No browser download step: chromedriver drives the Google Chrome you already
+# have.
 #
 # Selenium 4.6+ resolves chromedriver itself through Selenium Manager, so
 # there is nothing else to install.

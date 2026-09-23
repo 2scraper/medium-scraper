@@ -356,7 +356,7 @@ def write_run_meta(out_prefix: str, meta: dict) -> str:
 def run_meta(status: str, stop_reason: str, pages_requested: int,
              pages_completed: int, start_url: str, final_url: str,
              products: int, pages_failed: Optional[List[int]] = None,
-             mode: str = "topic", source: str = SOURCE_DEFAULT,
+             mode: str = "tag", source: str = SOURCE_DEFAULT,
              extra: Optional[dict] = None) -> dict:
     """Build the metadata dict for a finished run.
 
@@ -480,7 +480,7 @@ def finish_run(rows: Sequence[Any], out_prefix: str, fmt: str,
                pages_requested: int, pages_completed: int,
                start_url: str, final_url: str,
                pages_failed: Optional[List[int]] = None,
-               mode: str = "topic", source: str = SOURCE_DEFAULT,
+               mode: str = "tag", source: str = SOURCE_DEFAULT,
                extra: Optional[dict] = None) -> int:
     """Write output + the run-metadata sidecar; return the exit code.
 

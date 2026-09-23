@@ -41,45 +41,31 @@ not the check caught it.
 ## Reporting a site change
 
 Medium changing its markup is the normal way this stops working, and it has
-its own issue template. The detail that saves the most time is WHICH of the
-two read paths broke, because this repo has two and they fail differently.
+its own issue template. The detail that saves the most time is WHICH read
+path broke, because this repo has four and they fail differently.
 
-**Path 1 — the inline GraphQL payload.** Medium server-renders no content DOM
-at all (measured: 0 occurrences of its own `q-box` class in the raw response
-body of six captures), and what it does send is its own query results pushed
-into the page:
+**The two payloads.** Medium serves the same catalogue through two
+renderers, and the URL decides which one answers:
 
-```
-window.ansFrontendGlobals.data.inlineQueryResults.results["<hash>"]
-    .push("{\"data\":{…}}")
-```
+- `window.__APOLLO_STATE__` — the modern site: tag feeds, author pages and
+  story pages. Normalized `Post:{id}` nodes joined by `__ref` pointers to
+  `User` and `Collection`.
+- `window["obvInit"]({…})` — the legacy renderer, and the only one that
+  answers a tag's DAY archive: up to 128 stories in one 2.3 MB response, 84
+  fields each, and no Apollo state on that page at all.
 
-If that push pattern moves, a run does NOT fail. It quietly degrades to the
-DOM-only path and every row comes back with a null `upvotes`, `views`,
-`created_at`, `answer_id` and a body truncated to what the card rendered —
-while the row count, the titles and the authors all stay healthy. The
-`data_source` column is what shows it: every row reads `dom` where some used
-to read `dom+inline`. The canary asserts exactly that on a question URL, and
-every run logs its payload coverage per batch.
+If either payload moves, a run does not necessarily fail. It degrades to the
+page's JSON-LD or to the rendered cards, and the row count, the titles and
+the authors can stay healthy while `claps`, `reading_time_min`, `word_count`
+and `language` empty out. The `data_source` column is what shows it: every
+row reads `jsonld` or `dom` where it used to read `apollo` or `obvinit`.
 
-**Path 2 — the rendered cards.** Four of Medium's own hooks, all of them
-semantic rather than build hashes:
+**The two fallbacks** — the tag feed's JSON-LD, and the rendered cards
+(`article` on the modern site, `.streamItem` on the legacy archive, with the
+author read from a `/@handle` link that carries no story id).
 
-1. **`a.answer_timestamp`** — the permalink under every answer, and THE
-   anchor. If it moves, a run reports 0 rows and exit 4, which is loud.
-2. **`.puppeteer_test_question_title`** — the question on a feed card. Absent
-   on a question page by design; the page's `h1` is the fallback there.
-3. **`.spacing_log_answer_content` / `.puppeteer_test_answer_content`** — the
-   answer body, and the thing the card scope widens until it finds.
-4. **`.spacing_log_answer_header`** — the block holding the author link, the
-   credential and the date. The credential is read by REMOVING the author and
-   timestamp links from a copy of it, so a change to either of those two
-   shows up as a mangled credential rather than as a missing one.
-
-A third thing can break without either path failing: the **join** between
-them. When it breaks, the row count and the titles stay healthy while the
-counts empty out — so if you are reporting a change, the `data_source`
-breakdown of a run is the number to include.
+So if you are reporting a change, the `data_source` breakdown of a run is
+the number to include.
 
 `--dump-html PATH` writes the exact bytes the parser was given, on success as
 well as failure, and a run that finds nothing writes a dump and a screenshot
@@ -106,14 +92,12 @@ Then the rest of the presentation, in the order that matters:
 1. `python3 smoke_test.py` green, and the canary dispatched at least once —
    including its WARNING branch, which is what runs when a bare GitHub
    runner's datacentre address is refused and no `MEDIUM_PROXY` secret is set.
-   This canary needs no secret to do real work: eight of fourteen fetches
-   were served in full with no key and no proxy, from a DATACENTRE address
-   at that. What it has NOT been measured doing is getting past
-   Cloudflare from a shared datacentre address, and since the challenge here
-   tracks the address's recent request rate, a runner is the worst case for
-   it. That is exactly why a block there is a warning rather than a failure —
-   until you set `MEDIUM_PROXY`, after which it is a failure, because then it
-   means something.
+   This canary needs no secret to do real work: every number in the README
+   was taken from a datacentre address with no key and no proxy. Since
+   Medium's challenge tracks the address's recent request rate, a shared
+   runner is the worst case for it — which is why a block there is a warning
+   rather than a failure until you set `MEDIUM_PROXY`, after which it is a
+   failure, because then it means something.
 2. The repo description, homepage and topics set (see the family notes on
    what those should say).
 3. Only then the row in the org profile README — and check it with an
@@ -127,66 +111,53 @@ Then the rest of the presentation, in the order that matters:
 file of plain functions with inline HTML/JSON fixtures — no pytest, no
 conftest, no fixtures directory. Copy the nearest existing check and edit it.
 
-Ten properties in this repo exist because they were once absent, or because
-they cost a sibling repo real time. Tests pin all ten, so a PR that breaks one
-will fail rather than silently regress:
+These properties exist because they were once absent, or because they cost
+this repo or a sibling real time. The suite pins them, so a PR that breaks
+one will fail rather than silently regress:
 
-- **`sku` is the permalink, not the numeric id.** Medium publishes a numeric
-  `aid` and it would be the tidier key — but a topic feed, a whole mode,
-  carries no numeric id anywhere (measured 0 occurrences across two topic
-  captures in two languages), and a key null for a third of the modes cannot
-  be the column `diff_runs.py` joins on. `answer_id` carries the number where
-  the payload reached the row.
-- **The counts come from the payload and are NULL on a topic row.** An
-  anonymous reader is shown no upvote or view count in the DOM at all — 0
-  rendered nodes across five captures. `data_source` is the column that says
-  whether a null means zero or means nobody looked, and `diff_runs.py`
-  reports a count that moved together with `data_source` as
-  `source_changed` rather than as a change.
-- **The card's author link is not the first `/profile/` link in the card.**
-  The first one is the avatar and has no text, so reading it gives an author
-  of `""` on every row while every coverage check reads 100%.
-- **The card scope stops at the answer BODY, not at the second id.** §4's
-  "widen until you cover more than one item" never fires here: Medium wraps
-  each card in a chain of single-child divs, and the ancestor sixteen levels
-  up still holds one permalink while having absorbed the page footer
-  (measured: a 161,882-byte scope on one page). The stop condition is the
-  positive one.
-- **A relative date is never parsed into a date.** The card prints "Aug 14",
-  "2y", "3 años" — a display string in the page's own language, and "2y"
-  cannot be resolved to a day. `date_text` keeps it verbatim; `created_at`
-  comes from the payload's epoch-MICROSECOND timestamp or is null.
-- **`created_at` is microseconds.** Read as seconds it lands in the year 57
-  million and as milliseconds in 57705, and both parse without error.
-- **A challenge that survives its retries is BLOCKED, not empty.** This
-  differs from every sibling repo and was found by running the thing: with
-  `blocked: False` in `STATE_POLICY` the first live run handed Cloudflare's
-  6 KB interstitial to the parser and reported exit 4 ("ran fine, found
-  nothing") on a topic holding hundreds of answers.
-- **A marker that matches every good page is not a marker.** `cf-turnstile`,
-  `challenges.cloudflare.com` and `recaptcha` each appear on EVERY page
-  Medium serves — it wires Turnstile into every page and never renders it to
-  an anonymous reader — and `recaptcha` appears zero times on the challenge
-  page. None of the three is in this repo's marker set, and the suite asserts
-  they stay out.
+- **`sku` is Medium's own 12-hex post id.** It survives a story being
+  renamed, re-slugged or moved into a publication; none of the URLs do.
+- **`url` is the story's address on Medium, not the canonical.** A
+  cross-posted story's canonical points at another site entirely — 4 of 20
+  JSON-LD entries on one tag feed pointed at habr.com and dev.to. It is kept
+  in `canonical_url` instead.
+- **`virtuals.recommends` is not the clap count.** It is the retired
+  pre-2017 recommend count — 25 beside a `totalClapCount` of 248 on the same
+  story — and reading it fills the column completely and wrongly.
+- **A publication home page is refused.** Its `Post` nodes are
+  `{__typename, id}` and nothing else, so rows built from them would carry a
+  sku and 26 nulls while the run reported success.
+- **Only the day archive has per-page addresses.** `?page=2` on a tag feed is
+  ignored and the feed returns its first stories again, so `--pages` and
+  `--concurrency` do something only in `--mode archive`, and are refused
+  with the reason elsewhere.
+- **A day with no stories redirects up to its month**, which is the other
+  renderer holding a different set of stories. The walk compares the landed
+  URL with the requested one and stops rather than attributing one period's
+  stories to another.
+- **A marker that matches every good page is not a marker.**
+  `challenge-platform` appears on every page Medium serves, and so does its
+  reCAPTCHA Enterprise markup (3-4 `g-recaptcha` references on pages known to
+  be good, 0 on the challenge). Neither is in this repo's marker set, and the
+  suite asserts they stay out.
+- **A challenge that survives its retries is BLOCKED, not empty.** Otherwise
+  Cloudflare's interstitial is parsed as a feed and reported as exit 4 ("ran
+  fine, found nothing").
 - **A run that finds nothing writes nothing.** It must not replace a good
   output file with `[]`. `--allow-empty` is the opt-out.
 - **Exit codes are a contract**, not decoration: `0` ok, `1` crash, `2` bad
-  usage, `3` blocked, `4` zero rows, `5` remote API error, `6` partial. A
-  pipeline branches on these. And a scroll that produced nothing new is
-  `complete` only when nothing behind it was refused — otherwise it is
-  `partial`, because a throttled run reporting "complete" is the failure
-  §7 exists to prevent.
+  usage, `3` blocked, `4` zero stories, `5` remote API error, `6` partial. A
+  pipeline branches on these.
 
 Two more that are about the fixtures rather than the code:
 
 - **A fixture is CUT from a real capture and proven to parse identically**,
   column for column, by `make_fixtures.py`. Never hand-written.
-- **The PEOPLE in a capture are replaced before it is committed.** Author
-  names, profile slugs, credentials, answer bodies and the links an answer
-  cited all become placeholders; question titles, ids, counts, timestamps and
-  every piece of markup Medium generates stay verbatim. The suite asserts both
-  halves — that no real name survives, and that the structure did.
+- **The PEOPLE in a capture are replaced before it is committed.** Every
+  real author name and handle becomes a pseudonym; story ids, counts,
+  timestamps and every piece of markup Medium generates stay verbatim. The
+  suite asserts both halves — that no real name survives, and that the
+  structure did.
 
 There is also a naming check: certain phrases are banned repo-wide and the suite
 fails naming them. If it trips, read the message — the phrase is wrong for a
@@ -211,27 +182,21 @@ reason, not merely unfashionable.
 
 Most do not — the suite covers the parser, the writers, the captcha classifier
 and the CLI contract against inline fixtures. If yours genuinely needs
-medium.com, say in the PR what you ran, which URL and page kind, from
-which exit, and what you got — including the price and image coverage
-percentages the run prints, and the scroll trace from the sidecar. Note that
-a run from a datacentre address gets NO RESPONSE AT ALL, so "it returned
-nothing" from a VPS is not a finding. Product counts differ by category, by
-URL and by how far the scroll got, so a bare "worked for me" is not
-reproducible.
+medium.com, say in the PR what you ran, which URL and mode, from which exit,
+and what you got — including the coverage lines the run prints and the
+`data_source` breakdown. Row counts differ by tag, by day and by mode, so a
+bare "worked for me" is not reproducible.
 
 **Run more than the primary engine.** "Mirror them exactly" is a design rule,
-not a verification: the first live run of the pyppeteer engine crashed on its
-FIRST fetch on a signature mismatch that four separate offline checks and 400
+not a verification: in a sibling repo the first live run of the pyppeteer
+engine crashed on its FIRST fetch on a signature mismatch that four separate offline checks and 400
 green assertions had not caught.
-
-Do not add anything that submits the registration form. This project
-deliberately never does, and a captcha token proved valid by creating a real
-account is not a result worth having.
 
 ## Scope
 
-This repo scrapes **public pages** on Medium: category listings, search
-listings and product pages, exactly as an anonymous visitor is served them.
+This repo scrapes **public pages** on Medium: tag feeds, a tag's day
+archives, author pages and stories, exactly as an anonymous visitor is served
+them.
 Out of scope: anything behind a login, anything that submits a form, and
 anything that defeats a protection rather than passing it the way an ordinary
 browser does.

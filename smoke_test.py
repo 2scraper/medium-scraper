@@ -923,12 +923,10 @@ def test_page_flow_policy():
                 not page_flow.should_parse("empty") and not page_flow.should_retry("empty"))
     ok &= check("shell is parsed after the wait, never refetched",
                 page_flow.should_parse("shell") and not page_flow.should_retry("shell"))
-    # THE DIFFERENCE FROM EVERY SIBLING REPO, and it was found by running
-    # the thing (§15). A challenge is retried first; if the retries are spent
-    # and it is still a challenge, the run is BLOCKED (exit 3), not empty
-    # (exit 4). With this False the first live run parsed the 6 KB
-    # interstitial as a feed and reported "ran fine, found nothing" on a
-    # topic holding hundreds of answers.
+    # A challenge is retried first; if the retries are spent and it is still
+    # a challenge, the run is BLOCKED (exit 3), not empty (exit 4). With this
+    # False Cloudflare's interstitial would be parsed as a feed and reported
+    # as "ran fine, found nothing".
     ok &= check("a challenge that survives its retries counts as blocked",
                 page_flow.counts_as_blocked("challenge") is True)
     ok &= check("but it is retried before that verdict is reached",
@@ -958,13 +956,15 @@ def test_page_flow_policy():
     ok &= check("MIN_CARD_MATCHES is above 1 (§5)", page_flow.MIN_CARD_MATCHES > 1)
     ok &= check("the anchor is the card itself, in every mode",
                 all(page_flow.ready_selector(m) == SELECTORS["item_card"]
-                    for m in ("topic", "question", "profile")))
-    # A question with a single answer can never reach the floor, so the
-    # site's own answer count lowers it.
-    ok &= check("min_matches is clamped by what the question says it holds",
-                page_flow.min_matches("question", 1) == 1)
+                    for m in ("tag", "archive", "author", "post")))
+    # A caller that knows the page holds a single story lowers the floor, or
+    # the wait would spend its whole timeout on a page that was ready.
+    ok &= check("min_matches is clamped by what the caller says the page holds",
+                page_flow.min_matches("tag", 1) == 1)
     ok &= check("and is not raised above the floor",
-                page_flow.min_matches("question", 50) == page_flow.MIN_CARD_MATCHES)
+                page_flow.min_matches("tag", 50) == page_flow.MIN_CARD_MATCHES)
+    ok &= check("post mode waits for its one card, not two",
+                page_flow.min_matches("post") == 1)
     # Medium publishes no per-page counter. What it does publish on a day
     # archive is the size of the tag's WHOLE catalogue since 2003, which is
     # recorded beside the run and never used as an expectation: reading it as
@@ -1407,7 +1407,7 @@ def test_diff():
 
     group("lifecycle is emitted and always empty, for the family's shape")
     ok &= check("the key is there", "lifecycle" in diff_products([], []))
-    ok &= check("and it is empty", diff_products([row()], [row(upvotes=1)])
+    ok &= check("and it is empty", diff_products([row()], [row(claps=1)])
                 ["lifecycle"] == [])
 
     group("--fail-on-change ignores what is about US, not the site")
@@ -2228,6 +2228,15 @@ def test_no_file_describes_another_site():
         "farfetch": "a sibling repo",
         "divsrpcontentproducts": "a sibling's grid selector",
         "lodging-card-responsive": "a sibling's card selector",
+        # The Q&A sibling this repo's prose was also copied from. Its name
+        # never survived the copy; its vocabulary did, in help text, log
+        # lines, CONTRIBUTING and both issue templates.
+        "quora": "a sibling repo",
+        "upvote": "a sibling's count column",
+        "answer_timestamp": "a sibling's card hook",
+        "ansfrontendglobals": "a sibling's payload",
+        "no answer cards": "a sibling's log line",
+        "no property cards": "a sibling's log line",
     }
     # A CONTEXT allowlist, the same shape ci_checks.py uses for credentials,
     # because one of these words is legitimate in exactly one place. §8 says
@@ -2241,9 +2250,13 @@ def test_no_file_describes_another_site():
     checked = 0
     for path in sorted(pathlib.Path(REPO_ROOT).rglob("*")):
         rel = path.relative_to(REPO_ROOT)
-        if not path.is_file() or path.suffix not in (".py", ".md", ".yml",
-                                                     ".yaml", ".toml",
-                                                     ".example"):
+        # `.txt` and `.dockerignore` too: the requirements files and the
+        # docker ignore list both carried a sibling's name past this check
+        # when it scanned code and prose only.
+        if not path.is_file() or (path.suffix not in (".py", ".md", ".yml",
+                                                      ".yaml", ".toml",
+                                                      ".example", ".txt")
+                                  and path.name != ".dockerignore"):
             continue
         if any(part in {"worktrees", ".venv", "venv", "build", "dist", ".git"}
                for part in rel.parts) or path.name.startswith("_"):
@@ -2317,7 +2330,7 @@ def test_no_capture_leaks():
 
     # And the PEOPLE, which is the other half of §10 and the half a
     # credential grep does not cover. make_fixtures.py replaces every author
-    # name, profile slug, credential and answer body before writing; these
+    # name and handle with a pseudonym before writing; these
     # are the shapes that would show a pass having been skipped.
     ok &= check("no author name survives except the placeholder",
                 "Fixture Author" in text)
