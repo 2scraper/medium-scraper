@@ -1,17 +1,12 @@
-# The recommended engine. After installing, fetch the browser itself — and
-# note WHICH browser:
+# The recommended engine. After installing, fetch the browser itself:
 #
 #   pip install -r requirements.txt -r requirements-playwright.txt
-#   playwright install chrome
+#   playwright install chromium
 #
-# `chrome`, NOT `chromium`. This is the single most important line in this
-# repo's setup. Measured against Vrbo on 2026-09-14, same residential
-# address, seconds apart: Playwright's bundled Chromium was answered HTTP 429
-# and real Chrome HTTP 200 with the full grid. Installing chromium here gives
-# you a scraper that cannot fetch its own target and looks like a blocked IP.
-#
-# `playwright install chrome` installs Google Chrome through the system
-# package manager, so it needs the same privileges any other browser install
-# would. If that is not available, `--browser-channel msedge` also drives a
-# real browser; the bundled chromium is the one to avoid.
+# Playwright's own bundled Chromium is enough on Medium, and that is a
+# measurement rather than an assumption: headful, it was served exactly as
+# well as system Chrome on the same URL. What Medium's Cloudflare refuses is
+# the `HeadlessChrome` token in the User-Agent, which this engine never sends
+# (see the README). `--browser-channel chrome` is available if you would
+# rather drive an installed Chrome, but nothing requires it.
 playwright>=1.40.0

@@ -253,12 +253,12 @@ def _run_once(args, attempt: int = 1, attempts: int = 1) -> int:
             f.write(html)
         logger.error(
             "The site did not serve the Scraper API's request (upstream "
-            "HTTP %s, %d bytes) — saved to %s. Measured 2026-09-10: the "
-            "Scraper API's own exit is a datacentre address, and this site "
-            "answers those with NOTHING, while the same task routed through "
-            "a Scraping Browser session returned 200 and 417 KB. Pass "
-            "--cdp-url. This is exit 3, distinct from an empty result "
-            "(exit 4).", upstream_status, len(html), dump)
+            "HTTP %s, %d bytes) — saved to %s. On 2026-09-16 this path was "
+            "served on all four modes, so a refusal is not the usual "
+            "answer; the dump shows which of Medium's two refusal pages it "
+            "was. Retry later, or route the task through a Scraping Browser "
+            "session with --cdp-url. "
+            "This is exit 3, distinct from an empty result (exit 4).", upstream_status, len(html), dump)
         return 3
 
     vendor = detect_bot_challenge(html)
@@ -268,8 +268,9 @@ def _run_once(args, attempt: int = 1, attempts: int = 1) -> int:
             vendor, len(html),
         )
         logger.error("A challenge page is not a final answer — retry before concluding "
-                     "anything (--retries). This site needs a rendered browser in the "
-                     "path: pass --cdp-url, or use playwright_scraper.py / "
+                     "anything (--retries): Medium's managed challenge was measured "
+                     "clearing on the next attempt. If it persists, pass "
+                     "--cdp-url, or use playwright_scraper.py / "
                      "puppeteer_scraper.py directly.")
         return 3
 
@@ -310,11 +311,11 @@ def parse_args():
                    help="2captcha.com API key (sent as a Bearer token). "
                         "Defaults to $TWOCAPTCHA_KEY, which is the safer way to pass it.")
     p.add_argument("--url", default=None,
-                   help="A Medium question or profile URL. A TOPIC url "
-                        "returns nothing here — measured, and --wait-element "
-                        "does not help — because a topic's answers arrive "
-                        "over a later XHR. Required, unless MEDIUM_URL is set "
-                        "in the environment or in .env.")
+                   help="A Medium URL: a tag feed (/tag/{slug}), a tag's day "
+                        "archive (/tag/{slug}/archive/{yyyy}/{mm}/{dd}), an "
+                        "author (/@{username}) or a story (/p/{id}). "
+                        "Required, unless MEDIUM_URL is set in the "
+                        "environment or in .env.")
     p.add_argument("--category", default=None, help="Label to tag output rows with. Defaults to the category segment of the URL, so the column is never empty just because the flag was omitted.")
     p.add_argument("--format", choices=["json", "csv", "both"], default="both")
     p.add_argument("--out", default="medium_posts_scraperapi", help="Output file prefix")

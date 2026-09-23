@@ -4,8 +4,8 @@ diff_runs.py
 -------------
 Compares two output files from this project (JSON, as written by
 output_writer.save) and reports what changed between them, keyed on `sku` —
-the identifier the README tells people to diff on for tracking an answer's
-reception over time.
+Medium's own 12-hex post id, which survives a story being renamed,
+re-slugged or moved into a publication.
 
     python3 diff_runs.py --old ml.2026-09-01.json \\
                           --new ml.2026-09-07.json
@@ -17,26 +17,27 @@ filename, diffed against the previous one:
     python3 diff_runs.py --old "ml_$(ls -t ml_*.json | sed -n 2p)" \\
                           --new "ml_$(date +%F).json" --out diff.json
 
-Four buckets, each keyed on sku — here the answer's permalink:
+Four buckets, each keyed on sku — here the story's post id:
 
   added          — sku present in --new, absent from --old
   removed        — sku present in --old, absent from --new (deleted or
-                   collapsed, or just off this particular feed run)
+                   unpublished, or just off this particular feed run)
   changed        — sku present in both, with a different clap count, response
-                   count, answer count, title or body length
+                   count, reading time, word count, title, body length,
+                   paywall flag or publication
   source_changed — sku present in both with a different count, but also a
                    different `data_source`. That is the bucket this site
-                   needs most: claps, responses, reading time and the full
-                   reading time and word count come from the view that
-                   built the row and are
-                   NULL on a row built from the rendered card alone, so a
-                   topic run diffed against a question run would report every
-                   count as having appeared or vanished. Reported separately
+                   needs most: reading time and word count are null on a
+                   tag-feed row and populated on an archive, author or post
+                   row, the body length exists only in post mode, and a row
+                   built from the rendered card alone carries no clap count —
+                   so a tag run diffed against an archive run would report
+                   those columns as having appeared or vanished. Reported separately
                    because it says something about our own two snapshots, not
                    about the site — and --fail-on-change deliberately ignores
                    it.
 
-An answer this project's parser could not recover a sku for (None) cannot be
+A story this project's parser could not recover a sku for (None) cannot be
 matched across runs at all, so it is counted and reported separately rather
 than silently folded into "added"/"removed", which would be wrong on its face.
 """
@@ -50,13 +51,12 @@ from typing import Dict, List, Optional, Tuple
 
 from output_writer import UNIQUE_BY_SKU_MODES
 
-# What is worth watching on an answer. No price, currency, discount or stock
+# What is worth watching on a story. No price, currency, discount or stock
 # anywhere in this list, because this site has none of them — see
 # output_writer's docstring for why those columns do not exist on the row
 # either.
 #
-# `title` IS tracked, unusually for this family: it is the QUESTION, and
-# Medium lets a story be renamed, re-slugged and moved into a publication.
+# `title` IS tracked, unusually for this family: Medium lets a story be renamed, re-slugged and moved into a publication.
 # That is a real
 # event and there is no other column that would show it.
 #
@@ -112,12 +112,12 @@ def _within_tolerance(before: dict, after: dict, changes: dict,
     """True if every differing count field moved by less than `tolerance_pct`.
 
     Unlike in most of this family, this flag has a real use here and the
-    reason is worth stating. Medium's counters are LIVE: a measured story
-    carried 1,733 views, and a view count that ticks by a handful between two
-    runs of the same command is not an event anybody wants alerted on. A
-    monitor watching for a post going viral wants a threshold; a monitor
-    watching for an answer being edited wants `text_chars`, which is not a
-    count field and is never absorbed by this.
+    reason is worth stating. Medium's clap and response counts are LIVE, and
+    a count that ticks by a handful between two runs of the same command is
+    not an event anybody wants alerted on. A monitor watching for a post
+    going viral wants a threshold; a monitor watching for a story being
+    edited wants `title` or `publication`, which are not count fields and are
+    never absorbed by this.
 
     It still DEFAULTS TO ZERO, because the default should report what
     happened rather than decide for the reader what was interesting.
@@ -166,22 +166,19 @@ def diff_products(old: List[dict], new: List[dict],
             continue
 
         # THE TWO RUNS READ DIFFERENT VIEWS, which is not a change in the
-        # answer — and on this site this is the bucket that matters most.
+        # story — and on this site this is the bucket that matters most.
         #
-        # Upvotes, views, shares, comments and the question answer count come
-        # from the payload the view carried, which an archive or author page
-        # carries and a topic page does not. So a row read off a topic feed
-        # has null counts and the same row read off its question page has
-        # real ones, and diffing the two would report every counter as having
-        # appeared from nowhere. `text_chars` moves for the same reason: a
-        # card body is truncated to three lines and the payload one is the
-        # whole answer.
+        # Reading time and word count come from the payload the view
+        # carried, which an archive, author or post page carries and a tag
+        # feed does not; a card-only row has no clap count; and the body
+        # length exists only in post mode. So the same story read off two
+        # views would report those columns as having appeared from nowhere.
         #
         # `--fail-on-change` ignores this bucket for the same reason it
         # ignores a tolerance move: it says which view we read, not what
         # changed on the site.
         sources = (before.get("data_source"), after.get("data_source"))
-        view_fields = COUNT_FIELDS + ("text_chars",)
+        view_fields = COUNT_FIELDS
         if sources[0] != sources[1] and any(
                 f in field_changes for f in view_fields):
             view_part = {f: v for f, v in field_changes.items()
@@ -197,12 +194,11 @@ def diff_products(old: List[dict], new: List[dict],
             if not field_changes:
                 continue
 
-        # There is no lifecycle bucket on this site, and its absence is a
-        # measurement rather than an omission. A sibling repo needs one
+        # There is no lifecycle bucket on this site. A sibling repo needs one
         # because an auction closing moves a bid kind and the amount beside
-        # it in one event; an answer has no such state machine. What it does
-        # have -- being deleted or collapsed -- makes it vanish from the
-        # feed, which is the `removed` bucket. The `lifecycle` key is still
+        # it in one event; a story has no such state machine. Being deleted
+        # or unpublished makes it vanish from the feed, which is the
+        # `removed` bucket. The `lifecycle` key is still
         # emitted, always empty, so a consumer written against the family
         # diff shape does not have to branch.
 
@@ -260,9 +256,9 @@ def _print_summary(result: dict) -> None:
                            for f, v in c["changes"].items())
         print(f"  ? {c['sku']}  {c['title']}  {deltas}  "
               f"[data_source {src['old']!r} -> {src['new']!r}: the two runs "
-              f"read different views of the same answer, so this is not a "
-              f"site-side change. A topic feed carries no counts at all; a "
-              f"question or profile page does]")
+              f"read different views of the same story, so this is not a "
+              f"site-side change. A tag feed carries no reading time or word "
+              f"count; an archive, author or post page does]")
     unmatchable = result["unmatchable_old"] + result["unmatchable_new"]
     if unmatchable:
         print(f"[!] {unmatchable} row(s) across both files had no sku or a "
@@ -309,8 +305,8 @@ def _check_comparable(args) -> bool:
             # This tool's whole premise is one row per `sku`, diffed on
             # A mode that produces many rows per sku would give a diff
             # whose every line is an artefact of two rows sharing an id, so
-            # it is refused outright rather than answered. Both of this
-            # repo's current modes qualify; the check is here so that adding
+            # it is refused outright rather than answered. All four of this
+            # repo's modes qualify; the check is here so that adding
             # one that does not is caught rather than discovered.
             problems.append(
                 f"{label} ({path}) is a {mode!r} run, which is not one row "
@@ -366,7 +362,8 @@ def _check_comparable(args) -> bool:
         return True
 
     # A generic headline, because the reasons below are no longer only about
-    # completeness: a mode mismatch and a reviews run are refused too, and a
+    # completeness: a mode mismatch and a mode that is not one row per sku are
+    # refused too, and a
     # message naming the wrong reason sends the reader looking in the wrong
     # place.
     print("[!] Refusing to diff these two runs:")
@@ -391,11 +388,11 @@ def parse_args():
                         "counter ticking rather than an event: reported "
                         "separately and ignored by --fail-on-change. Default 0 "
                         "— report every tick. Unlike in most of this family "
-                        "the flag has a real use here: Medium's view and "
-                        "clap counts are live, so a monitor watching for an "
-                        "answer taking off wants a threshold, while one "
-                        "watching for an edit wants text_chars, which this "
-                        "never absorbs.")
+                        "the flag has a real use here: Medium's clap and "
+                        "response counts are live, so a monitor watching for "
+                        "a story taking off wants a threshold, while one "
+                        "watching for an edit wants title or publication, "
+                        "which this never absorbs.")
     p.add_argument("--fail-on-change", action="store_true",
                    help="Exit 1 if anything was added, removed or changed — "
                         "for a cron job that should only notify on a real diff.")
@@ -427,7 +424,7 @@ def main() -> int:
         print(f"[+] Full diff written to {args.out}")
 
     # Neither `source_changed` nor `within_tolerance` is a reason to fail.
-    # The first means our two runs read different views of the same answer;
+    # The first means our two runs read different views of the same story;
     # the second means a live counter ticked. Neither says anything about the
     # site, and alerting on either would train whoever reads the alert to
     # ignore it.
