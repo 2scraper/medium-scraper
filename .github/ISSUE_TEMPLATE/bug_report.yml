@@ -12,36 +12,24 @@ body:
 
         A few things answer most reports faster than we can:
 
-        - **Everything exit 3?** That is Cloudflare's managed challenge, and
-          the first thing to check is how much that address has been
-          fetching. Measured: 8 of the first 14 fetches from one address were
-          served and everything after was refused, with a 45-minute rest not
-          enough to clear it. Raise `--delay`, rest the address, or use
-          `--proxy-file`. A captcha solve buys nothing here — a managed
-          challenge publishes no sitekey.
-        - **`upvotes`, `views`, `created_at` null on every row?** Expected if
-          you scraped a TOPIC url. A topic page's inlined payload carries 0
-          answer objects, so those columns come from nowhere. Point it at a
-          question or a profile. The `data_source` column says which view
-          built each row.
-        - **A handful of rows from a question with hundreds of answers?** The
-          session was served a short feed. Four loads of one URL gave 5, 13,
-          12 and 259 answers, and in the short ones the scroll reached the
-          document's end and the site never fetched more. Re-run it.
-        - **`title` null on some rows?** A question page carries answers to
-          OTHER questions — related ones and merged duplicates — and a few
-          name no question anywhere on the page. `question_url` is still
-          correct on those rows; inventing a title from the slug would be a
-          guess. What is NOT expected is a title that reads "Related …" or
-          one that repeats the page's own question on a row answering a
-          different one. Both of those are worth this issue.
-        - **Zero rows?** You may be on a page that has none, or on a `/search`
-          URL, which this scraper refuses: Medium answers an anonymous search
-          with the language home page rather than with results.
+        - **Everything exit 3?** Check which refusal you got — `--dump-html`
+          writes exactly what the parser saw. A ~5 KB "Sorry, you have been
+          blocked" is Cloudflare's WAF, and the usual cause is a
+          `HeadlessChrome` User-Agent or the address's recent volume. A
+          ~28 KB "Just a moment…" is the managed challenge, which was
+          measured clearing on the next attempt in a fresh context — that is
+          what `--retries` does. On a long archive walk, raise `--delay` or
+          use `--proxy-file`.
+        - **`reading_time_min`, `word_count`, `language` null on every row?**
+          Expected on a TAG FEED: its payload does not carry them. A day
+          archive, an author page or a story does. The `data_source` column
+          says which view built each row.
+        - **`--pages 3` on a tag feed gave one page of stories?** Only the
+          day archive has per-page addresses; `?page=2` on a tag feed is
+          ignored by Medium. Use `/tag/{slug}/archive/{yyyy}/{mm}/{dd}`.
+        - **A publication URL refused?** On purpose: a publication home page
+          carries post ids and no post data. The error names the alternative.
           See [TROUBLESHOOTING.md](../blob/main/TROUBLESHOOTING.md).
-        - **Wrong language?** The language is the HOSTNAME (`medium.com`,
-          `jp.medium.com`), not something the exit IP decides. Note Japanese is
-          on `jp.`, not `ja.`.
 
   - type: dropdown
     id: engine
@@ -89,8 +77,8 @@ body:
       render: shell
       placeholder: |
         python3 playwright_scraper.py \
-          --url "https://medium.com/topic/Machine-Learning" \
-          --pages 3 --out grills
+          --url "https://medium.com/tag/python/archive/2026/09/10" \
+          --pages 3 --out python_days
     validations:
       required: true
 
@@ -110,7 +98,7 @@ body:
     attributes:
       label: What you expected instead
       placeholder: >-
-        96 products, as the README says a category page yields.
+        Up to 128 stories per day, as the README says a day archive yields.
     validations:
       required: true
 

@@ -9,6 +9,50 @@ default changes because a measurement said it should, that is called out at
 the top of the release rather than left to be discovered from a bill or an
 empty output file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Help text and log lines that described a different site.** `--mode`,
+  `--category`, `--pages` and `--concurrency` help in the engines, and the
+  Scraper API client's `--url` help, described a Q&A site's questions,
+  topics and vote counts. `--pages`/`--concurrency` also claimed no mode has
+  per-page addresses, while `--mode archive` does and the Playwright worker
+  pool uses them. The readiness log named the donor sites' card kinds (an
+  answer in Playwright and pyppeteer, a rental property in Selenium); all
+  three now say "No story cards".
+- **The Scraper API client's refusal messages** claimed this site answers the
+  API's exit with nothing and that a rendered browser is required. The
+  README measured the Scraper API served on all four modes; the messages now
+  say so and point at `--retries` / `--cdp-url` as the next step.
+- **`diff_runs.py`** docstring, comments, `--price-tolerance-pct` help and
+  its `source_changed` line described answers, questions and topic feeds;
+  they now describe stories, tag feeds and archive/author/post views. The
+  `source_changed` view fields no longer include `text_chars`, a column this
+  repo's row does not have.
+- `output_writer`'s `mode` default was `"topic"`, a mode this repo does not
+  have; it is now `"tag"`. Every engine passes its mode explicitly.
+- **CONTRIBUTING.md and both issue templates were about another site** — its
+  card hooks, inline payload, columns and URLs. Rewritten from this repo's
+  README and parser: the two payloads and two fallbacks, and the properties
+  the suite pins.
+- `requirements*.txt` named another repo and described another site's
+  browser measurements (including `playwright install chrome`, which the
+  README does not need); they now carry this repo's own measurements.
+- `.dockerignore` ignored another repo's output prefix; it now ignores
+  `medium_posts.*`, the engines' real `--out` default.
+- Stray donor wording in `TROUBLESHOOTING.md` and in suite comments, and a
+  `min_matches` check that exercised a mode named `question`.
+
+### Changed
+
+- The suite's foreign-vocabulary guard also scans `.txt` files and
+  `.dockerignore`, and knows the Q&A sibling's vocabulary. Both new halves
+  were controlled: planting the old `requirements.txt` header and the old
+  Selenium log line each turned the suite red on that check. (This entry
+  describes the old wording rather than quoting it, because CHANGELOG.md is
+  scanned too.)
+
 ## [0.1.1] — 2026-09-16
 
 > **Correction to v0.1.0.** That release's README said of Medium's two
