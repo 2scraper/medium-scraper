@@ -53,6 +53,9 @@ empty output file.
   describes the old wording rather than quoting it, because CHANGELOG.md is
   scanned too.)
 
+- `SECURITY.md` said this project has no releases or version tags; it has
+  both. "Supported versions" now names the latest release and `main`.
+
 ## [0.1.1] — 2026-09-16
 
 > **Correction to v0.1.0.** That release's README said of Medium's two
