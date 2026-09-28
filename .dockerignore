@@ -11,7 +11,8 @@ __pycache__/
 .venv/
 venv/
 env/
-vrbo_products.*
+medium_posts.*
+medium_posts_*.*
 *_debug.html
 *_debug.png
 live_results/

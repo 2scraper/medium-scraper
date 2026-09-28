@@ -682,7 +682,7 @@ def _fetch_one_page(session, args, pool, page_num: int,
             content_timeout)
         _sleep(500)
         if found < threshold:
-            logger.info("No answer cards appeared within %.0fs. If this feed "
+            logger.info("No story cards appeared within %.0fs. If this feed "
                         "genuinely holds nothing, that is the expected "
                         "answer and the run will report 0 rows (exit 4).",
                         content_timeout / 1000)
@@ -951,11 +951,12 @@ def parse_args():
     p = argparse.ArgumentParser(
         description="Medium story scraper (pyppeteer edition)")
     p.add_argument("--url", default=None,
-                   help="A Medium URL: a topic (/topic/{Slug}), a question "
-                        "(/{Question-Slug}) or a profile (/profile/{Slug}). "
-                        "An answer permalink is accepted and read as its "
-                        "question. Required, unless MEDIUM_URL is set in the "
-                        "environment or .env.")
+                   help="A Medium URL: a tag (/tag/{slug}), a tag's day "
+                        "archive (/tag/{slug}/archive/{yyyy}/{mm}/{dd}), an "
+                        "author (/@{username}) or a story (any URL ending in "
+                        "a 12-hex post id, or /p/{id}). A publication home "
+                        "page is refused with the reason. Required, unless "
+                        "MEDIUM_URL is set in the environment or in .env.")
     p.add_argument("--mode", choices=["tag", "archive", "author", "post"],
                    default=None,
                    help="Which view the URL is. Inferred from the URL by "
@@ -964,14 +965,17 @@ def parse_args():
                    help="Label to tag output rows with. Filled from the URL "
                         "by default.")
     p.add_argument("--pages", type=int, default=1,
-                   help=f"Number of scroll BATCHES to walk (default 1, cap "
-                        f"{PAGE_CAP}). Medium has no per-page address in any "
-                        f"mode.")
+                   help=f"Number of pages to walk (default 1, cap {PAGE_CAP}). "
+                        f"In --mode archive a page is one day with its own "
+                        f"address; every other mode has no per-page address, "
+                        f"so a page there is one settled scroll batch.")
     p.add_argument("--delay", type=float, default=3.0,
                    help="Delay between batches, seconds (default 3.0).")
     p.add_argument("--concurrency", type=int, default=1, metavar="N",
-                   help="Accepted for family compatibility and REFUSED above "
-                        "1: a Medium feed has no per-batch address.")
+                   help="Accepted for family compatibility and not "
+                        "implemented in this engine: the worker pool lives in "
+                        "playwright_scraper.py, and this engine walks archive "
+                        "days one at a time with identical output.")
     p.add_argument("--retries", type=int, default=3,
                    help="Attempts per page load before giving up (default 3).")
     p.add_argument("--retry-delay", type=float, default=2.0,

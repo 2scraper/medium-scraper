@@ -705,8 +705,8 @@ def _fetch_one_page(session, args, pool, page_num: int,
             content_timeout)
         _sleep(500)
         if found < threshold:
-            logger.info("No property cards appeared within %.0fs. If this "
-                        "search genuinely matches nothing, that is the "
+            logger.info("No story cards appeared within %.0fs. If this "
+                        "feed genuinely holds nothing, that is the "
                         "expected answer and the run will report 0 rows "
                         "(exit 4).", content_timeout / 1000)
         outcome.scroll = _scroll_the_feed(session, args, html, page_num)
@@ -990,18 +990,21 @@ def parse_args():
                    help="Label to tag output rows with. Filled from the URL "
                         "by default.")
     p.add_argument("--pages", type=int, default=1,
-                   help=f"Number of scroll BATCHES to walk (default 1, cap "
-                        f"{PAGE_CAP}). Medium has no per-page address in any "
-                        f"mode: `?page=2` is ignored and the feed returns its "
-                        f"first items again.")
+                   help=f"Number of pages to walk (default 1, cap {PAGE_CAP}). "
+                        f"In --mode archive a page is one day with its own "
+                        f"address; every other mode has no per-page address "
+                        f"(`?page=2` is ignored and the feed returns its "
+                        f"first items again), so a page there is one settled "
+                        f"scroll batch.")
     p.add_argument("--delay", type=float, default=3.0,
                    help="Delay between batches, seconds (default 3.0). The "
                         "rate matters more than the address on this site, so "
                         "this is the lever that matters.")
     p.add_argument("--concurrency", type=int, default=1, metavar="N",
-                   help="Accepted for family compatibility and REFUSED above "
-                        "1: a Medium feed has no per-batch address, so there "
-                        "is nothing to hand a second worker.")
+                   help="Accepted for family compatibility and not "
+                        "implemented in this engine: the worker pool lives in "
+                        "playwright_scraper.py, and this engine walks archive "
+                        "days one at a time with identical output.")
     p.add_argument("--retries", type=int, default=3,
                    help="Attempts per page load before giving up (default 3).")
     p.add_argument("--retry-delay", type=float, default=2.0,

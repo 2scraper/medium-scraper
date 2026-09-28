@@ -243,7 +243,7 @@ python3 smoke_test.py
 `make_fixtures.py` refuses to write a fixture that does not parse identically
 to its untrimmed original, so a bad trim fails loudly rather than pinning the
 wrong behaviour. It also replaces the people in a capture — names, profile
-slugs, credentials, answer bodies, cited links — before anything is written.
+handles — with pseudonyms before anything is written.
 
 ---
 

@@ -1,4 +1,4 @@
-# vrbo-scraper — core dependencies
+# medium-scraper — core dependencies
 #
 #   pip install -r requirements.txt
 #
@@ -9,7 +9,7 @@ requests>=2.31.0
 
 # Then install exactly ONE engine — see the file per engine:
 #
-#   pip install -r requirements-playwright.txt && playwright install chrome
+#   pip install -r requirements-playwright.txt && playwright install chromium
 #   pip install -r requirements-selenium.txt
 #   pip install -r requirements-puppeteer.txt
 #
