@@ -13,6 +13,25 @@ empty output file.
 
 ### Fixed
 
+- **A refused `--cdp-endpoint` explained the wrong cause.** Every connect
+  failure was followed by the same paragraph about `profile_locked`, so an
+  expired login (HTTP 401, `deny_no_user`) sent the reader looking for a
+  run holding the pid. The text is now chosen by what the failure says:
+  expired credentials, a held profile, an unreachable host, or — for a bare
+  timeout — an honest "no status, try fresh credentials first". pyppeteer
+  also crashed with a traceback and exit 1 on the same failure; it now
+  exits 5 like Playwright, with the endpoint's password masked. Pinned by
+  offline checks that drive each engine's real connect path with the
+  driver stubbed; verified by planting four faults and requiring the named
+  check to go red.
+- **The tag-feed canary asserted that ONE row had claps.** Claps and
+  responses ride on the Apollo rows only; the 20 rows that come from
+  JSON-LD never carry them, so a share over all rows tracks the source mix,
+  not the read. The canary now judges the Apollo rows (at least 15, claps
+  and responses on at least 80% of them) and fails if a JSON-LD row ever
+  carries either. Measured 2026-10-05 over four live runs of `/tag/python`:
+  34-35 Apollo rows, 100% in three runs and 30 of 35 in the fourth, 0 of 20
+  JSON-LD rows in every run.
 - **The Scraper API path sent `waitFor` in a form the live API rejects,
   and read the wrong field as the target's status.** Measured 2026-09-23
   against `scraper.2captcha.com/tasks/sync`: `waitFor` sent as a

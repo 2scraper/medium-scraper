@@ -65,7 +65,7 @@ from product_parser import (parse_posts, SELECTORS, PAGE_CAP,
                             detect_bot_challenge, listing_kind, normalize_url,
                             page_url, paginates_by_url, redirected_away,
                             served_by_medium, source_of, unsupported_reason)
-from output_writer import dedupe_by_key, finish_run
+from output_writer import dedupe_by_key, finish_run, EXIT_API_ERROR
 import page_flow
 from proxy_pool import (from_args as proxy_pool_from_args, split_credentials,
                         mask, ROTATE_MODES, ProxyError)
@@ -88,6 +88,14 @@ DEFAULT_OP_TIMEOUT = 120
 # server is still working. It is NOT a cure for `profile_locked`, which was
 # observed with no timed-out connect in its history at all.
 CONNECT_TIMEOUT = 150
+
+
+class CdpConnectError(RuntimeError):
+    """A remote browser that would not accept the connection.
+
+    A remote API failure (exit 5), not a crash in this code (exit 1): the
+    Playwright engine already reports it that way.
+    """
 
 
 class _AsyncBridge:
@@ -233,11 +241,20 @@ class _Session:
             # form and authenticates on the WebSocket upgrade, so an
             # authenticated Scraping Browser endpoint works here — unlike
             # Selenium's debuggerAddress, which has nowhere to put a password.
-            self.browser = self.bridge.run(
-                connect(browserWSEndpoint=self.args.cdp_endpoint,
-                        ignoreHTTPSErrors=True),
-                timeout=getattr(self.args, "cdp_connect_timeout",
-                                CONNECT_TIMEOUT))
+            try:
+                self.browser = self.bridge.run(
+                    connect(browserWSEndpoint=self.args.cdp_endpoint,
+                            ignoreHTTPSErrors=True),
+                    timeout=getattr(self.args, "cdp_connect_timeout",
+                                    CONNECT_TIMEOUT))
+            except Exception as e:  # noqa: BLE001 — any failure to connect
+                # The library's text can carry the endpoint, password and
+                # all, so mask before it is put anywhere.
+                text = _mask_credentials(str(e))
+                raise CdpConnectError(
+                    f"could not connect to --cdp-endpoint "
+                    f"{_mask_credentials(self.args.cdp_endpoint)}: {text}\n"
+                    f"{page_flow.cdp_connect_advice(text)}") from None
             self.page = self.bridge.run(self.browser.newPage())
             _watch_graphql(self)
             return self
@@ -1110,3 +1127,6 @@ if __name__ == "__main__":
     except ProxyError as e:
         logger.error("%s", e)
         sys.exit(2)
+    except CdpConnectError as e:
+        logger.error("%s", e)
+        sys.exit(EXIT_API_ERROR)
