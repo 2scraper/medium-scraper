@@ -51,6 +51,7 @@ OPERATION and each engine spells it in its own driver's dialect.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Callable, Dict, List, Optional
 
 from product_parser import (SELECTORS, PAGE_CAP, CONCURRENCY_REASON,
@@ -299,6 +300,46 @@ SOLVES_PER_PAGE = 1
 # page. True here on the measurement above. Consulted by all three engines;
 # a constant no engine read would be the §17 defect this comment warns about.
 RETRY_NEEDS_FRESH_CONTEXT = True
+
+
+def cdp_connect_advice(error_text: str) -> str:
+    """Say what a refused --cdp-endpoint connection most likely MEANS.
+
+    The same sentence used to follow every connect failure, and it explained
+    `profile_locked`. A 401 is not that: the credentials are expired or
+    wrong (a profile's last about a day), and a reader told to look for a
+    run holding the pid goes looking in the wrong place. Classified by what
+    the failure SAYS, not by which driver raised it. Pure text in, text out,
+    and no secret ever goes into the answer.
+
+    pyppeteer never surfaces the HTTP status of a rejected upgrade — only a
+    timeout ends its connect — so a bare timeout is named as ambiguous
+    rather than guessed at.
+    """
+    text = (error_text or "").lower()
+    if re.search(r"\b401\b", text) or "deny_no_user" in text or "unauthorized" in text:
+        return ("The endpoint refused the credentials (HTTP 401). A Scraping "
+                "Browser profile's login expires after about a day, so fetch "
+                "fresh ones from the 2Captcha dashboard and check the "
+                "`ws://{login}-zone-scraping_browser-country-xx-pid-{id}:"
+                "{password}@cb.2captcha.com:9222` shape. This is not "
+                "`profile_locked`, and another pid will not help.")
+    if "profile_locked" in text or re.search(r"\b500\b", text):
+        return ("A Scraping Browser profile allows ONE live connection, so "
+                "`profile_locked` means something holds this `pid` — it stays "
+                "locked for a couple of seconds after a clean disconnect. "
+                "Two profiles were also observed entering that state and not "
+                "leaving it, one for over forty minutes; if waiting does not "
+                "clear it, use a different pid or reset the profile from the "
+                "2Captcha dashboard.")
+    if any(k in text for k in ("econnrefused", "getaddrinfo", "name or service",
+                               "not known", "unreachable", "econnreset")):
+        return ("The endpoint could not be reached at all — a network or DNS "
+                "problem, not a rejected login. Check the host and port.")
+    return ("The connection did not complete and the failure carries no "
+            "status. Expired credentials (HTTP 401) and a locked profile "
+            "(`profile_locked`) both look like this from some drivers; try "
+            "fresh credentials first, then a different pid.")
 
 
 def block_advice(html: Optional[str], headless: bool, has_pool: bool) -> str:

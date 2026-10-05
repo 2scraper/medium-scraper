@@ -1642,6 +1642,106 @@ def test_credentials_never_reach_a_log():
     return ok
 
 
+def test_cdp_connect_failure_names_its_cause():
+    group("A refused --cdp-endpoint says WHY, and a 401 is not profile_locked")
+    ok = True
+    secret = "hunter2"
+    # Concatenated, so no line here is a complete scheme://user:pass@host
+    # literal (see test_credentials_never_reach_a_log).
+    endpoint = "ws://user:" + secret + "@cb.2captcha.com:9222"
+    advice = page_flow.cdp_connect_advice
+    unauthorized = "WebSocket error: " + endpoint + " 401 Unauthorized (deny_no_user)"
+    ok &= check("a 401 is named as expired credentials",
+                "expires after" in advice(unauthorized))
+    # Each signal alone, so removing one of the three cannot hide behind the
+    # other two in the line above.
+    ok &= check("a bare status 401 is enough",
+                "expires after" in advice("server returned HTTP 401"))
+    ok &= check("deny_no_user alone is enough",
+                "expires after" in advice("deny_no_user"))
+    ok &= check("a 401 is NOT explained as a locked profile",
+                "means something holds" not in advice(unauthorized))
+    ok &= check("a 500 / profile_locked is explained as a held pid",
+                "means something holds" in advice("HTTP 500 profile_locked"))
+    ok &= check("an unreachable host is a network problem",
+                "network" in advice("getaddrinfo ENOTFOUND cb.example"))
+    ok &= check("a bare timeout is called ambiguous, not guessed",
+                "no status" in advice("Timeout 30000ms exceeded"))
+    # A port that merely contains the numerals must not read as a status.
+    ok &= check("numerals inside a port are not an HTTP status",
+                "expires" not in advice("connect to host:14019 failed"))
+    ok &= check("the advice never carries a secret",
+                all(secret not in advice(t) for t in (unauthorized, endpoint)))
+
+    # Through each engine that CAN connect remotely: the message that
+    # reaches the log names the cause, and carries no password.
+    try:
+        import playwright_scraper as pw_engine
+    except ImportError:
+        pw_engine = None
+    if pw_engine is not None:
+        class _Chromium:
+            def connect_over_cdp(self, *a, **k):
+                raise pw_engine.PWError(unauthorized)
+
+        class _Pw:
+            chromium = _Chromium()
+
+        args = type("A", (), {"cdp_endpoint": endpoint,
+                              "cdp_connect_timeout": 1})()
+        try:
+            pw_engine._connect_remote(_Pw(), args)
+            message = ""
+        except pw_engine.PWError as e:
+            message = str(e)
+        ok &= check("playwright: a 401 reaches the log as a 401",
+                    "expires after" in message
+                    and "means something holds" not in message)
+        ok &= check("playwright: no password in the connect error",
+                    bool(message) and secret not in message)
+
+    try:
+        import puppeteer_scraper as pp_engine
+    except ImportError:
+        pp_engine = None
+    if pp_engine is not None:
+        class _Bridge:
+            def run(self, coro, timeout=None):
+                # A library error repeats the endpoint, password and all.
+                raise TimeoutError("pyppeteer call did not return within 10s: "
+                                   + " ".join([endpoint] * 3))
+
+        def _connect(**kwargs):
+            return None
+
+        real = pp_engine.connect
+        pp_engine.connect = _connect
+        try:
+            args = type("A", (), {"cdp_endpoint": endpoint,
+                                  "cdp_connect_timeout": 1})()
+            try:
+                pp_engine._Session(_Bridge(), args, None).open()
+                message = ""
+            except pp_engine.CdpConnectError as e:
+                message = str(e)
+        finally:
+            pp_engine.connect = real
+        ok &= check("pyppeteer: a failed connect is a CdpConnectError",
+                    bool(message))
+        ok &= check("pyppeteer: no password in the connect error",
+                    bool(message) and secret not in message)
+        ok &= check("pyppeteer: a timeout with no status is called ambiguous",
+                    "no status" in message)
+        ok &= check("pyppeteer: the host and port survive the masking",
+                    "cb.2captcha.com:9222" in message)
+        source = _engine_source("puppeteer_scraper") or ""
+        ok &= check("pyppeteer: CdpConnectError exits 5, not a traceback",
+                    "except CdpConnectError" in source
+                    and "EXIT_API_ERROR" in
+                    source.split("except CdpConnectError")[1][:120])
+    return ok
+
+
 def test_driver_primitives_tolerate_a_navigation():
     group("Every driver primitive survives the page moving under it")
     ok = True
@@ -2635,6 +2735,7 @@ def main() -> int:
     ok &= test_fingerprint_cache_is_key_aware()
     ok &= test_proxy_pool()
     ok &= test_credentials_never_reach_a_log()
+    ok &= test_cdp_connect_failure_names_its_cause()
     ok &= test_driver_primitives_tolerate_a_navigation()
     ok &= test_concurrency_machinery(skips)
     ok &= test_engine_parity(skips)

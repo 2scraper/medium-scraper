@@ -492,16 +492,7 @@ def _connect_remote(pw, args):
             f"could not connect to --cdp-endpoint "
             f"{_mask_credentials(args.cdp_endpoint)}: "
             f"{_mask_credentials(str(e))}\n"
-            f"A Scraping Browser profile allows ONE live connection at a "
-            f"time, so `profile_locked` means something holds this `pid`.\n"
-            f"Worth knowing before you go looking for it on your side: two "
-            f"profiles were observed here entering that state and NOT leaving "
-            f"it — one for over forty minutes, one still locked after four "
-            f"minutes of no requests at all, having locked on its very first "
-            f"connection attempt. Waiting did not clear either. If that is "
-            f"what you are seeing, it is not another run of this tool holding "
-            f"it, and nothing on this side will free it: use a different pid, "
-            f"or reset the profile from the 2Captcha dashboard."
+            f"{page_flow.cdp_connect_advice(_mask_credentials(str(e)))}"
         ) from None
     context = browser.contexts[0] if browser.contexts else browser.new_context()
     page = context.new_page()

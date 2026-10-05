@@ -206,9 +206,29 @@ jobs:
           if len(rows) < 15:
               fail.append("only %d rows; a measured tag feed gave 42-53"
                           % len(rows))
-          if not any(r.get("claps") is not None for r in rows):
-              fail.append("no row carries a clap count, and the modern "
-                          "payload carries one on every story it describes")
+          # Claps and responses ride on the Apollo rows ONLY: the ~20 rows
+          # that come from JSON-LD never carry them, so the share over all
+          # rows measures the mix of sources and says nothing about the
+          # read. Judge each source on what it should hold. Measured over
+          # four live runs of /tag/python on 2026-10-05: Apollo rows 34-35
+          # per run with claps and responses on 100% of them in three runs
+          # and 30 of 35 (86%) in the fourth, JSON-LD rows 20 with neither.
+          # Floors, with room for that fourth run.
+          apollo = [r for r in rows if r.get("data_source") == "apollo"]
+          if len(apollo) < 15:
+              fail.append("only %d rows came from the Apollo payload; "
+                          "measured 34-35, and the clap check below would "
+                          "pass on an empty set" % len(apollo))
+          for field in ("claps", "responses"):
+              got = sum(1 for r in apollo if r.get(field) is not None)
+              if apollo and got / len(apollo) < 0.8:
+                  fail.append("%s on only %d of %d Apollo rows; measured "
+                              "86-100%%" % (field, got, len(apollo)))
+          if any(r.get("claps") is not None or r.get("responses") is not None
+                 for r in rows if r.get("data_source") == "jsonld"):
+              fail.append("a JSON-LD row carried claps or responses — the "
+                          "payload changed, and what the README says about "
+                          "these columns by mode needs rewriting")
           # The documented asymmetry, asserted rather than assumed: a
           # tag-feed row has NO reading time because the payload does not
           # contain one. If this ever starts being populated, the README is
