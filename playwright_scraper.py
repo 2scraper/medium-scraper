@@ -1503,7 +1503,7 @@ def parse_args():
                         "exists only inside the browser that scrolled "
                         "through batches 1-4. Run several tags or authors in "
                         "parallel instead, one process each.")
-    p.add_argument("--retries", type=int, default=3,
+    p.add_argument("--retries", type=page_flow.attempts, default=3,
                    help="Attempts per page load before giving up (default 3). "
                         "The pause between attempts doubles each time. A page "
                         "that comes back EMPTY is not retried — see "
