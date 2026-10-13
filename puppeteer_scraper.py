@@ -993,7 +993,7 @@ def parse_args():
                         "implemented in this engine: the worker pool lives in "
                         "playwright_scraper.py, and this engine walks archive "
                         "days one at a time with identical output.")
-    p.add_argument("--retries", type=int, default=3,
+    p.add_argument("--retries", type=page_flow.attempts, default=3,
                    help="Attempts per page load before giving up (default 3).")
     p.add_argument("--retry-delay", type=float, default=2.0,
                    help="Seconds before the first page-load retry, doubling "
