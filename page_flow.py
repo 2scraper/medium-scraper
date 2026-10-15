@@ -2,7 +2,7 @@
 
 Medium answers a request five ways, and four of them want a different
 response, which is why this module exists rather than the same triage being
-written three times inside three engines and drifting apart (§1):
+written three times inside three engines and drifting apart:
 
     content    one of Medium's two payloads describes stories, or its own
                cards are rendered on a page built out of its own assets
@@ -42,7 +42,7 @@ passes its own driver's primitives and keeps its browser plumbing to itself:
     page_height() -> Optional[int]      document.body.scrollHeight
     sleep(ms) -> None                   wait
 
-No JavaScript crosses that boundary in either direction (§1): Selenium's
+No JavaScript crosses that boundary in either direction: Selenium's
 `execute_script` takes a function BODY with an explicit `return` where
 Playwright and pyppeteer take `() => expr`, so this module names the
 OPERATION and each engine spells it in its own driver's dialect.
@@ -69,7 +69,7 @@ logger = logging.getLogger("page_flow")
 # ---------------------------------------------------------------------------
 READY_SELECTOR = SELECTORS["item_card"]
 
-# Above 1, per §5: waiting for a single match resolves on the page's own
+# Above 1 on purpose: waiting for a single match resolves on the page's own
 # first card long before a feed paints. Measured first paints: 15 cards on a
 # tag feed, 10 on an author profile, 128 on a day archive, 1 on a post page —
 # which is why `min_matches` clamps for the mode that genuinely has one.
@@ -117,7 +117,7 @@ def wait_for_count(count: Callable[[str], int], sleep: Callable[[int], None],
     under any CSP and spells the same in all three drivers.
 
     Returns the count it ended on, whether or not it reached the floor:
-    reporting a timeout is not the same as exiting on one (§8).
+    reporting a timeout is not the same as exiting on one.
     """
     waited = 0
     found = count(selector)
@@ -134,7 +134,7 @@ def wait_for_count(count: Callable[[str], int], sleep: Callable[[int], None],
 # ---------------------------------------------------------------------------
 # Lazy loading
 # ---------------------------------------------------------------------------
-# §8's second case. Scroll to `document.body.scrollHeight` rather than
+# The lazy-loaded case. Scroll to `document.body.scrollHeight` rather than
 # wheeling a fixed distance — a fixed wheel stops short on a long grid and
 # the trigger is never reached — and require the count AND the height to hold
 # still for THREE rounds, because the next batch takes longer to arrive than
@@ -189,7 +189,7 @@ def classify(html: Optional[str], status: Optional[int] = None,
     Getting that wrong is not a style question: a sibling repo shipped two of
     three engines calling this as `classify(html, url=...)`, both crashed on
     their first fetch, and nothing short of a live run or a signature-binding
-    check saw it (§17). This repo's smoke suite binds every shared-module
+    check saw it. This repo's smoke suite binds every shared-module
     call in every engine for that reason.
     """
     if html is None:
@@ -198,7 +198,7 @@ def classify(html: Optional[str], status: Optional[int] = None,
 
 
 # The retry/solve/blocked decision as DATA rather than as three copies of an
-# if-chain in three engines (§1).
+# if-chain in three engines.
 #
 #   parse    is there anything on this page worth writing down?
 #   retry    would fetching it again, in a fresh context, plausibly help?
@@ -223,7 +223,7 @@ STATE_POLICY: Dict[str, Dict[str, bool]] = {
     # survives, because a challenge that never clears is a refusal, and
     # letting it through hands a 28 KB interstitial to the parser and reports
     # exit 4 — "ran fine, found nothing" — on a tag holding hundreds of
-    # thousands of stories. Blocked is not empty (§8).
+    # thousands of stories. Blocked is not empty.
     "challenge": {"parse": False, "retry": True,  "solve": False, "blocked": True},
     "blocked":   {"parse": False, "retry": True,  "solve": False, "blocked": True},
 }
@@ -267,15 +267,15 @@ def is_unpainted(state: str, html: Optional[str]) -> bool:
 #   challenge           `_cf_chl_opt = {… cType: 'managed' …}`. Transient.
 #
 # Three facts drive the constants below, and each is a constant rather than a
-# paragraph an engine might not read (§17: a policy constant nothing consults
+# paragraph an engine might not read (a policy constant nothing consults
 # is the same defect as dead code):
 #
 #   * THE USER-AGENT IS THE DISCRIMINATOR, not the address and not headless
 #     as such. A bare headless Chromium sending its default UA — the one
 #     carrying the `HeadlessChrome` token — was WAF-blocked on 11 of 11
 #     attempts. The same browser with an ordinary Chrome UA was never
-#     WAF-blocked. The engines build their UA from the browser's own version
-#     (§8), so they never send that token; `curl` and a naive headless
+#     WAF-blocked. The engines build their UA from the browser's own version,
+#     so they never send that token; `curl` and a naive headless
 #     script do, which is why they get nothing. Headful is still the default
 #     on a smaller margin: 8/8 served against headless's 6/8, interleaved.
 #
@@ -283,7 +283,7 @@ def is_unpainted(state: str, html: Optional[str]) -> bool:
 #     seconds inside the same context never cleared it once. Tearing the
 #     context down and opening a new one cleared it on the next attempt in 9
 #     of 9 cases. So a retry here must be a new context, which is the same
-#     shape as this family's "a rotation is a fresh browser" rule (§8),
+#     shape as this family's "a rotation is a fresh browser" rule,
 #     applied to a case with no proxy in it.
 #
 #   * IT IS NOT SOLVABLE. Measured on the interstitial Medium served: 0
@@ -296,9 +296,42 @@ BLOCK_RETRIES_WITHOUT_POOL = 3
 BLOCK_RETRIES_WITH_POOL = 4
 SOLVES_PER_PAGE = 1
 
+
+class SolveBudget:
+    """The paid-solve allowance for ONE page, shared by every call site.
+
+    An engine reaches the solver from two places per fetch attempt — the
+    check right after navigation, before the page is classified, and the
+    one after classification for a state that says the page is gated — and
+    both repeat on every block retry. A counter kept beside only the second
+    of them made `SOLVES_PER_PAGE` advisory: with detection forced and the
+    solver stubbed, one page with no proxy pool bought four solves against a
+    limit of one. So there is one object per page, created before the retry
+    loop, consulted immediately BEFORE each purchase and never reset by a
+    retry or a relaunch: a fresh context is a reason to re-fetch, not a
+    fresh allowance.
+    """
+
+    def __init__(self, limit: Optional[int] = None):
+        self.limit = SOLVES_PER_PAGE if limit is None else limit
+        self.spent = 0
+
+    def available(self) -> bool:
+        return self.spent < self.limit
+
+    def spend(self) -> bool:
+        """Claim one purchase. False, and nothing claimed, when exhausted."""
+        if not self.available():
+            logger.info("Not buying another solve for this page: its "
+                        "allowance of %d is spent.", self.limit)
+            return False
+        self.spent += 1
+        return True
+
+
 # Whether a retry has to discard the browser context rather than reload the
 # page. True here on the measurement above. Consulted by all three engines;
-# a constant no engine read would be the §17 defect this comment warns about.
+# a constant no engine read would be dead policy.
 RETRY_NEEDS_FRESH_CONTEXT = True
 
 
@@ -307,7 +340,7 @@ def cdp_connect_advice(error_text: str) -> str:
 
     The same sentence used to follow every connect failure, and it explained
     `profile_locked`. A 401 is not that: the credentials are expired or
-    wrong (a profile's last about a day), and a reader told to look for a
+    wrong, and a reader told to look for a
     run holding the pid goes looking in the wrong place. Classified by what
     the failure SAYS, not by which driver raised it. Pure text in, text out,
     and no secret ever goes into the answer.
@@ -318,9 +351,10 @@ def cdp_connect_advice(error_text: str) -> str:
     """
     text = (error_text or "").lower()
     if re.search(r"\b401\b", text) or "deny_no_user" in text or "unauthorized" in text:
-        return ("The endpoint refused the credentials (HTTP 401). A Scraping "
-                "Browser profile's login expires after about a day, so fetch "
-                "fresh ones from the 2Captcha dashboard and check the "
+        return ("The endpoint refused the credentials (HTTP 401): they are "
+                "expired, revoked or mistyped. How long a profile's login "
+                "lasts has not been measured as a fixed figure, so fetch "
+                "current ones from the 2Captcha dashboard and check the "
                 "`ws://{login}-zone-scraping_browser-country-xx-pid-{id}:"
                 "{password}@cb.2captcha.com:9222` shape. This is not "
                 "`profile_locked`, and another pid will not help.")
@@ -390,13 +424,13 @@ def block_advice(html: Optional[str], headless: bool, has_pool: bool) -> str:
 # `--mode archive` walks `/tag/{slug}/archive/{yyyy}/{mm}/{dd}` backwards a
 # day at a time. Those are real, independent addresses: 128 stories in one
 # fetch, `paging` empty, and page 5 knowable without fetching page 4 — which
-# is what makes `--concurrency` meaningful there and nowhere else (§7).
+# is what makes `--concurrency` meaningful there and nowhere else.
 #
 # The other three modes have no per-batch address at all. `?page=2` on a tag
 # feed is not an error, it is IGNORED, and a run built on it would add no new
-# sku, call the listing exhausted and report COMPLETE holding one page (§18).
+# sku, call the listing exhausted and report COMPLETE holding one page.
 # For those modes a "page" is one settled scroll batch, and the terminating
-# condition is the DATA one §7 asks for: a batch that adds no unseen sku ends
+# condition is a DATA one: a batch that adds no unseen sku ends
 # the listing.
 NEXT_BATCH_TIMEOUT_MS = 45_000
 NEXT_BATCH_POLL_MS = 1_000
@@ -415,7 +449,7 @@ def advance_feed(scroll_to_bottom: Callable[[], None],
     Returns ADVANCED or NO_GROWTH, and the two must not collapse into one
     bool: a sibling repo mapped both to False, the engine mapped False to
     `pagination_exhausted`, and a run that was being rate-limited reported
-    status "complete" holding page 1 (§7).
+    status "complete" holding page 1.
 
     Readiness is the CARD COUNT growing. The document height is watched too
     but is not sufficient on its own — a page can grow by the height of a
@@ -460,7 +494,7 @@ def page_gap(html: Optional[str], parsed: int) -> Optional[int]:
     rendered everything it had.
 
     None rather than 0, because an unknown gap is not a gap of zero and the
-    two must not read the same in a sidecar (§8).
+    two must not read the same in a sidecar.
     """
     return None
 
@@ -481,7 +515,7 @@ def tag_total_posts(html: Optional[str]) -> Optional[int]:
 # ---------------------------------------------------------------------------
 # A feed that did not extend is the site, not the scroll
 # ---------------------------------------------------------------------------
-# §8's third case: "a different page was served to this SESSION — no amount
+# The third kind of missing content: "a different page was served to this SESSION — no amount
 # of waiting or scrolling helps". On Medium the mechanism is blunter than a
 # session variant. The scroll fires a POST to `medium.com/_/graphql`, and
 # from the address these numbers were taken on every one of those POSTs came
@@ -592,3 +626,26 @@ def attempts(value) -> int:
             f"With 0 the load loop never runs, nothing is fetched, and the "
             f"engine reports the browser's blank page as a result.")
     return number
+
+
+def at_least(flag: str, minimum, cast=int):
+    """argparse `type=` for a numeric flag with a floor, naming the flag.
+
+    `--pages 0` used to plan no page at all and `--delay -1` reached
+    `time.sleep` as a negative number, which raises mid-run. Both are usage
+    errors, and argparse should say so before anything is launched, in the
+    flag's own words rather than as a traceback.
+    """
+    def parse(value):
+        try:
+            number = cast(value)
+        except (TypeError, ValueError):
+            raise _argparse.ArgumentTypeError(
+                f"{flag} must be a {'whole ' if cast is int else ''}number, "
+                f"not {value!r}")
+        if number < minimum:
+            raise _argparse.ArgumentTypeError(
+                f"{flag} must be at least {minimum}, not {number}")
+        return number
+    parse.__name__ = flag.lstrip("-").replace("-", "_")
+    return parse

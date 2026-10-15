@@ -31,7 +31,7 @@ a sibling. The ones worth knowing about before you change anything:
     on the same story. Reading it would have filled the column completely and
     wrongly, and no coverage check would have said a word.
 
-  * `test_markers_do_not_match_a_good_page` is the §18 rule as a test. Medium
+  * `test_markers_do_not_match_a_good_page` is the "count a marker on a good page" rule as a test. Medium
     ships reCAPTCHA Enterprise on every page it
     serves, and `challenge-platform` appears twice on good and refused pages
     alike. A marker that matches every page is worse than no marker, so every
@@ -103,7 +103,7 @@ ENGINES = ("playwright_scraper", "selenium_scraper", "puppeteer_scraper")
 SHARED_MODULES = {"page_flow": page_flow, "product_parser": product_parser}
 
 # Four fixtures cut from pages Medium actually served. Every marker check
-# below asserts its markers are ABSENT from all four (§18).
+# below asserts its markers are ABSENT from all four.
 GOOD_PAGES = ("tag_feed", "archive_day", "author", "post")
 
 _failures = []
@@ -492,7 +492,7 @@ def test_publication_pages_are_refused():
 
     # A host that left Medium is refused with THAT reason rather than with
     # "is not a Medium site", which is false and sends the reader looking for
-    # a typo (§5).
+    # a typo.
     why = unsupported_reason("https://towardsdatascience.com/")
     check("a former publication is refused", why is not None)
     check("...with the reason it actually left",
@@ -583,7 +583,7 @@ def test_pagination():
         check("%s does not" % other, not paginates_by_url(other))
         # None, not a built URL. `?page=2` on a tag feed is IGNORED rather
         # than failing, so a run built on it would add no new sku, call the
-        # listing exhausted and report COMPLETE holding one page (§18).
+        # listing exhausted and report COMPLETE holding one page.
         check("...and page_url returns None for it", page_url(other, 2) is None)
 
     check("page 1 is the URL given", page_url(archive, 1) == archive)
@@ -607,7 +607,7 @@ def test_pagination():
           page_url("https://medium.com/tag/python/archive/2026/02/31", 2) is None)
 
     # The site publishes its own archive index, which is what lets a walk be
-    # planned rather than guessed (§7).
+    # planned rather than guessed.
     years = archive_years(fixture("archive_day"))
     check("the archive index lists years with stories", len(years) > 10)
     check("...as four-digit strings",
@@ -681,7 +681,7 @@ def test_page_state():
 
     # The status is positional and SECOND, matching `page_flow.classify`.
     # Two engines in a sibling repo passed it as a keyword and both crashed
-    # on their first fetch (§17).
+    # on their first fetch.
     check("detect_page_state takes status positionally, second",
           list(inspect.signature(detect_page_state).parameters)[:2]
           == ["html", "status"])
@@ -691,7 +691,7 @@ def test_page_state():
 
     # A payload proves content even where nothing has painted, and it is
     # asked BEFORE any threshold — ordered by what each signal proves rather
-    # than by what is cheap (§17).
+    # than by what is cheap.
     unpainted = re.sub(r"<article\b.*?</article>", "", fixture("tag_feed"),
                        flags=re.S)
     check("a state with no painted cards is still content",
@@ -710,7 +710,7 @@ def test_page_state():
                             "https://medium.com/tag/python") == "blocked")
     # Medium's own "no stories" copy is a POSITIVE signal and beats the
     # status check and every threshold: a correct empty answer must not be
-    # reported as a block (§17).
+    # reported as a block.
     empty = shell.replace("<body>", "<body>No stories")
     check("the site's own empty answer is `empty`, not `blocked`",
           detect_page_state(empty, 200, "https://medium.com/tag/x") == "empty")
@@ -723,7 +723,7 @@ def test_page_state():
 
 
 def test_markers_do_not_match_a_good_page():
-    group("§18: a marker that matches every page is worse than no marker")
+    group("a marker that matches every page is worse than no marker")
 
     # EVERY marker in EVERY set, asserted absent from four pages Medium
     # actually served. This is the check that would have caught `g-recaptcha`
@@ -782,7 +782,7 @@ def test_markers_do_not_match_a_good_page():
 
     # The Scraping Browser's auto-solve extension injects its own turnstile
     # hunter into every page it loads. This repo's marker set CAN match one,
-    # which is the condition §8 sets for adding the filter.
+    # which is the condition for adding the filter.
     injected = (fixture("tag_feed") +
                 '<script src="chrome-extension://kjmkgkdkpedkejedfhmfcenoo'
                 'emhbpbo/content/captcha/turnstile/hunter.js" '
@@ -835,7 +835,7 @@ def test_a_challenge_is_never_paid_for_here():
 
 
 def test_captcha_capability_claims_match_the_code():
-    """§19: a sentence is the most expensive bug this family can ship.
+    """A sentence is the most expensive bug this family can ship.
 
     Two directions, and both have been shipped wrong in this family before:
 
@@ -851,7 +851,7 @@ def test_captcha_capability_claims_match_the_code():
     Nothing else in the suite can catch either one: no test fails, no run
     crashes and the output is correct.
     """
-    group("captcha capability claims (§19)")
+    group("captcha capability claims")
     ok = True
     docs = {}
     for name in ("README.md", "CHANGELOG.md"):
@@ -875,7 +875,7 @@ def test_captcha_capability_claims_match_the_code():
         for phrase in FORBIDDEN:
             hit = phrase in low
             # A released CHANGELOG section is history and is left verbatim;
-            # a correction leads the newer section instead (§19).
+            # a correction leads the newer section instead.
             if hit and name == "CHANGELOG.md":
                 continue
             ok &= check(f"{name}: no {phrase!r} — write "
@@ -940,7 +940,7 @@ def test_page_flow_policy():
                 page_flow.should_parse("nonsense") is False)
 
     group("Retrying a block DOES help here — and the engines CONSULT that")
-    # A policy constant nothing reads is the same defect as dead code (§17).
+    # A policy constant nothing reads is the same defect as dead code.
     ok &= check("RETRY_ON_BLOCKED is True on this site",
                 page_flow.RETRY_ON_BLOCKED is True)
     ok &= check("the budget is non-zero", page_flow.BLOCK_RETRIES_WITHOUT_POOL > 0)
@@ -953,7 +953,7 @@ def test_page_flow_policy():
     ok &= check("every engine reads RETRY_ON_BLOCKED", all(consulted))
 
     group("Readiness — a count poll, never an evaluated string")
-    ok &= check("MIN_CARD_MATCHES is above 1 (§5)", page_flow.MIN_CARD_MATCHES > 1)
+    ok &= check("MIN_CARD_MATCHES is above 1", page_flow.MIN_CARD_MATCHES > 1)
     ok &= check("the anchor is the card itself, in every mode",
                 all(page_flow.ready_selector(m) == SELECTORS["item_card"]
                     for m in ("tag", "archive", "author", "post")))
@@ -991,7 +991,7 @@ def test_page_flow_policy():
 
 
 def test_scroll_loop():
-    group("The scroll — the WINDOW, and THREE stable rounds (§8)")
+    group("The scroll — the WINDOW, and THREE stable rounds")
     ok = True
     # The opposite of a sibling repo, whose body never scrolled. Here the
     # window is what moves, and every engine must scroll to the document's
@@ -1083,7 +1083,7 @@ def test_scroll_loop():
 
 
 def test_throttle_is_not_completion():
-    group("A refused batch is NOT an exhausted listing (§7)")
+    group("A refused batch is NOT an exhausted listing")
     ok = True
     # The distinction this repo's policy turns on. A scroll that produced
     # nothing new means one of two things, and they map to opposite run
@@ -1097,7 +1097,7 @@ def test_throttle_is_not_completion():
     ok &= check("advance_feed has two distinct outcomes, not a bool",
                 page_flow.ADVANCED != page_flow.NO_GROWTH)
 
-    # Driven with the browser stubbed out (§10): a live run cannot always
+    # Driven with the browser stubbed out: a live run cannot always
     # reach this, because batch 1 decides whether there is a batch 2 at all.
     calls = {"scrolls": 0}
     counts = iter([4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
@@ -1127,7 +1127,7 @@ def test_throttle_is_not_completion():
     ok &= check("a feed that grows reports ADVANCED",
                 verdict == page_flow.ADVANCED)
 
-    group("Every engine must reach the same verdict (§6)")
+    group("Every engine must reach the same verdict")
     # Selenium has no response listener, so the refused-GraphQL count comes
     # out of Chrome's performance log instead. If it silently answered 0, one
     # engine would report `complete` where its twins report `partial` on the
@@ -1163,7 +1163,7 @@ def test_throttle_is_not_completion():
 
 
 def test_output_contract():
-    group("The output contract (§9)")
+    group("The output contract")
     ok = True
     ok &= check("every mode yields the same row class",
                 set(ROW_CLASS_BY_MODE.values()) == {Post})
@@ -1268,7 +1268,7 @@ def test_writers_and_finish_run():
         ok &= check("empty and not blocked is exit 4", code == EXIT_NO_PRODUCTS)
 
         # THE DISTINCTION A LIVE DEAD PROXY FOUND. Zero rows has three
-        # causes and they are not the same thing (§8: blocked is not empty).
+        # causes and they are not the same thing (blocked is not empty).
         # This one used to return exit 4 — "ran fine, found nothing" — on a
         # run that never reached the site at all, while the sidecar beside
         # it correctly said `status: failed`, `pages_completed: 0`. A
@@ -1447,7 +1447,7 @@ def test_env_config():
     ok &= check("every .env.example name is read by the code",
                 documented <= set(env_config.ENV_KEYS))
 
-    group("A COPIED .env.example must read as unset (§17)")
+    group("A COPIED .env.example must read as unset")
     # `cp .env.example .env` followed by a run used to connect with the
     # literal string `{login}-zone-...` as a username and get a 401 — the
     # confusing auth error a long way from its cause that this rule exists to
@@ -1465,7 +1465,7 @@ def test_env_config():
                 # documents them, so a literal-only placeholder list misses
                 # both — `cp .env.example .env` then connected with the
                 # string `{login}-zone-...` as a username and got a 401 a
-                # long way from its cause (§17).
+                # long way from its cause.
                 for name in ("TWOCAPTCHA_KEY", "MEDIUM_CDP_ENDPOINT",
                              "MEDIUM_PROXY"):
                     ok &= check(f"{name} from a copied example reads as unset",
@@ -1485,7 +1485,7 @@ def test_env_config():
 
 
 def test_fingerprint_is_read_through_the_shared_helper():
-    group("--fingerprint reads the UA through ONE helper (§16)")
+    group("--fingerprint reads the UA through ONE helper")
     ok = True
     # The defect this pins was live in FOUR sibling repos at once and was
     # live here too, in the Selenium engine, until a live call to the API
@@ -1520,7 +1520,7 @@ def test_fingerprint_is_read_through_the_shared_helper():
     ok &= check("nothing recognisable -> None, never a fabricated UA",
                 fingerprint_user_agent({"userAgent": {}}) is None)
 
-    group("Its kwargs are ones the driver actually accepts (§10)")
+    group("Its kwargs are ones the driver actually accepts")
     # An unknown key in new_context(**kwargs) is a TypeError at launch, on
     # the paid path, at runtime.
     fp = {"userAgent": {"userAgent": "UA"},
@@ -1561,7 +1561,7 @@ def test_fingerprint_cache_is_key_aware():
     # key "deadbeef"*4 returned fingerprint 5393493 off disk and raised
     # nothing, because a REAL key had cached the same parameters earlier. A
     # user whose fingerprint subscription lapsed would see --fingerprint keep
-    # working on their own machine and 401 on a fresh one — §16's "a path
+    # working on their own machine and 401 on a fresh one — "a path
     # that looks like it works", in the one place this family has already
     # been bitten five times.
     ok &= check("two keys do not share a cache entry", a != b)
@@ -1573,7 +1573,7 @@ def test_fingerprint_cache_is_key_aware():
     ok &= check("the key never reaches the filename",
                 "key-one" not in a and len(pathlib.Path(a).stem) == 16)
     # And the caller must actually pass it — a key-aware helper nobody hands
-    # a key to is the §17 defect this family names dead policy.
+    # a key to is dead policy.
     src = open(os.path.join(REPO_ROOT, "fingerprint_client.py"),
                encoding="utf-8").read()
     ok &= check("get_fingerprint passes the key to the cache path",
@@ -1606,7 +1606,7 @@ def test_proxy_pool():
 
 
 def test_credentials_never_reach_a_log():
-    group("An EXCEPTION MESSAGE is a log (§8)")
+    group("An EXCEPTION MESSAGE is a log")
     ok = True
     secret = "hunter2"
     # Concatenated rather than interpolated, so no line in this file holds a
@@ -1652,13 +1652,13 @@ def test_cdp_connect_failure_names_its_cause():
     advice = page_flow.cdp_connect_advice
     unauthorized = "WebSocket error: " + endpoint + " 401 Unauthorized (deny_no_user)"
     ok &= check("a 401 is named as expired credentials",
-                "expires after" in advice(unauthorized))
+                "refused the credentials" in advice(unauthorized))
     # Each signal alone, so removing one of the three cannot hide behind the
     # other two in the line above.
     ok &= check("a bare status 401 is enough",
-                "expires after" in advice("server returned HTTP 401"))
+                "refused the credentials" in advice("server returned HTTP 401"))
     ok &= check("deny_no_user alone is enough",
-                "expires after" in advice("deny_no_user"))
+                "refused the credentials" in advice("deny_no_user"))
     ok &= check("a 401 is NOT explained as a locked profile",
                 "means something holds" not in advice(unauthorized))
     ok &= check("a 500 / profile_locked is explained as a held pid",
@@ -1669,7 +1669,7 @@ def test_cdp_connect_failure_names_its_cause():
                 "no status" in advice("Timeout 30000ms exceeded"))
     # A port that merely contains the numerals must not read as a status.
     ok &= check("numerals inside a port are not an HTTP status",
-                "expires" not in advice("connect to host:14019 failed"))
+                "refused the credentials" not in advice("connect to host:14019 failed"))
     ok &= check("the advice never carries a secret",
                 all(secret not in advice(t) for t in (unauthorized, endpoint)))
 
@@ -1695,7 +1695,7 @@ def test_cdp_connect_failure_names_its_cause():
         except pw_engine.PWError as e:
             message = str(e)
         ok &= check("playwright: a 401 reaches the log as a 401",
-                    "expires after" in message
+                    "refused the credentials" in message
                     and "means something holds" not in message)
         ok &= check("playwright: no password in the connect error",
                     bool(message) and secret not in message)
@@ -1745,7 +1745,7 @@ def test_cdp_connect_failure_names_its_cause():
 def test_driver_primitives_tolerate_a_navigation():
     group("Every driver primitive survives the page moving under it")
     ok = True
-    # The canary's FIRST dispatch caught this, which is exactly why §15 says
+    # The canary's FIRST dispatch caught this, which is exactly why the rule says
     # to dispatch it once rather than trusting the badge. A scroll batch was
     # polling the card count when the page navigated — Cloudflare's challenge
     # can arrive at any moment here — and one engine raised
@@ -1796,7 +1796,7 @@ def test_driver_primitives_tolerate_a_navigation():
 
 
 def test_concurrency_machinery(skips):
-    """§10: drive the worker pool with the browser stubbed out.
+    """Drive the worker pool with the browser stubbed out.
 
     A live run cannot reach this. Page 1 is fetched alone and its answer
     decides whether the rest may be addressed, so a blocked page 1 means the
@@ -1885,7 +1885,7 @@ def test_concurrency_machinery(skips):
     ok &= check("the end-of-listing event did not fire", not exhausted)
 
     # 2. Outcomes come back in ARRIVAL order and must be restorable to PAGE
-    #    order — §8's "merge in page order, not arrival order". With workers
+    #    order — the rule "merge in page order, not arrival order". With workers
     #    the two genuinely differ.
     ordered = sorted(results, key=lambda o: o.page_num)
     ok &= check("outcomes carry their page number",
@@ -1939,14 +1939,14 @@ def test_concurrency_machinery(skips):
 
 
 def test_engine_parity(skips):
-    group("The three engines agree — flags, in BOTH directions (§17)")
+    group("The three engines agree — flags, in BOTH directions")
     ok = True
     flagsets = {}
     for engine in ENGINES:
         src = open(os.path.join(REPO_ROOT, f"{engine}.py"), encoding="utf-8").read()
         flagsets[engine] = set(re.findall(r'p\.add_argument\("(--[a-z0-9-]+)"', src))
 
-    # The family contract (§9). Every engine must carry all of these.
+    # The family contract. Every engine must carry all of these.
     contract = {"--url", "--pages", "--category", "--format", "--out", "--delay",
                 "--retries", "--retry-delay", "--concurrency", "--proxy",
                 "--proxy-file", "--proxy-rotate", "--proxy-shuffle",
@@ -1978,7 +1978,7 @@ def test_engine_parity(skips):
         ok &= check(f"{engine}'s extra flags are exactly the documented set",
                     actual == extra)
 
-    group("Every shared-module call binds against the real signature (§17)")
+    group("Every shared-module call binds against the real signature")
     problems = []
     for engine in ENGINES:
         path = os.path.join(REPO_ROOT, f"{engine}.py")
@@ -2017,7 +2017,7 @@ def test_engine_parity(skips):
     ok &= check(f"no call site disagrees with its callee "
                 f"{'' if not problems else problems[:3]}", not problems)
 
-    group("Every engine imports its driver at MODULE level (§10)")
+    group("Every engine imports its driver at MODULE level")
     # Without this the module imports cleanly with no driver installed, the
     # skip below never fires, and CI's engine-smoke job cannot notice a
     # broken import.
@@ -2087,7 +2087,7 @@ def test_engine_parity(skips):
 
 
 def test_module_attributes_exist(skips):
-    group("Every `module.name` an engine reaches for actually exists (§17)")
+    group("Every `module.name` an engine reaches for actually exists")
     ok = True
     # The gap the signature-binding check leaves, found by a live run rather
     # than by reading. `_min_matches` in one engine called
@@ -2125,9 +2125,9 @@ def test_module_attributes_exist(skips):
 
 
 def test_no_dead_public_names():
-    group("Every public name in the policy modules has a reader (§17)")
+    group("Every public name in the policy modules has a reader")
     ok = True
-    # §17's check 5, automated. A public name nothing reads is dead code, and
+    # Automated: A public name nothing reads is dead code, and
     # a policy CONSTANT nothing reads is worse: the prose beside it reads
     # like enforcement. A sibling repo shipped `RETRY_ON_BLOCKED` with a
     # paragraph of measured justification and no engine consulting it.
@@ -2185,7 +2185,7 @@ def test_no_dead_public_names():
 
 
 def test_no_undefined_names():
-    group("Names that resolve, not just parse (§10)")
+    group("Names that resolve, not just parse")
     # `compileall` proves a file PARSES, not that its names RESOLVE. A live
     # run of a sibling repo's engine died with NameError on a line reached
     # only while fetching, after an import had been removed — invisible to
@@ -2240,7 +2240,7 @@ def _undefined_names(path):
 
 
 def test_dockerfile_matches_its_entrypoint():
-    group("The Dockerfile COPY list against the import graph (§10)")
+    group("The Dockerfile COPY list against the import graph")
     # All three repos in this family once shipped an image that died with
     # ModuleNotFoundError on every invocation, --help included, because one
     # module was missing from an explicit COPY list. This check needs no
@@ -2297,7 +2297,7 @@ def test_dockerfile_matches_its_entrypoint():
 
 
 def test_no_file_describes_another_site():
-    group("No shipped file still describes a different site (§17)")
+    group("No shipped file still describes a different site")
     ok = True
     # A sibling repo's audit found "a shipped file still described another
     # site", and this repo inherited the same thing FOUR times over: a
@@ -2339,7 +2339,7 @@ def test_no_file_describes_another_site():
         "no property cards": "a sibling's log line",
     }
     # A CONTEXT allowlist, the same shape ci_checks.py uses for credentials,
-    # because one of these words is legitimate in exactly one place. §8 says
+    # because one of these words is legitimate in exactly one place. The rule is that
     # captcha DETECTION stays broad — which challenge a visitor meets depends
     # on the exit and on what the address has been doing — so
     # `BOT_CHALLENGE_MARKERS` names vendors this site has never served, on
@@ -2377,7 +2377,7 @@ def test_no_file_describes_another_site():
 
 
 def test_wording():
-    group("Wording enforced by a test (§12)")
+    group("Wording enforced by a test")
     ok = True
     banned = {
         "cloud browser": "Scraping Browser API",
@@ -2410,7 +2410,7 @@ def test_wording():
 
 
 def test_no_capture_leaks():
-    group("Committed fixtures carry no credential-shaped material (§10)")
+    group("Committed fixtures carry no credential-shaped material")
     ok = True
     text = open(_FIXTURE_PATH, encoding="utf-8").read()
     # PATTERNS, not the literals one capture happened to contain, so the next
@@ -2428,7 +2428,7 @@ def test_no_capture_leaks():
     ok &= check("the challenge fixture still names its vendor after scrubbing",
                 detect_bot_challenge(fixture("challenge")) == "cloudflare")
 
-    # And the PEOPLE, which is the other half of §10 and the half a
+    # And the PEOPLE, which is the other half of fixture hygiene and the half a
     # credential grep does not cover. make_fixtures.py replaces every author
     # name and handle with a pseudonym before writing; these
     # are the shapes that would show a pass having been skipped.
@@ -2450,7 +2450,7 @@ def test_no_capture_leaks():
 
 
 def test_ci_checks_is_wired_up():
-    group("One credential check, invoked from CI and from here (§17)")
+    group("One credential check, invoked from CI and from here")
     ok = True
     script = os.path.join(REPO_ROOT, ".github", "ci_checks.py")
     ok &= check("ci_checks.py exists", os.path.exists(script))
@@ -2470,6 +2470,49 @@ def test_ci_checks_is_wired_up():
         ok &= check(f"ci_checks.py passes on this repo "
                     f"{'' if result.returncode == 0 else result.stdout[-300:]}",
                     result.returncode == 0)
+
+        # The scan judges its exclusions RELATIVE to the repository. Judged
+        # on absolute path parts, a clone that merely lives under a directory
+        # called `venv` skipped every file and reported "0 files scanned,
+        # nothing credential-shaped". Planted here, in a throwaway copy:
+        # a key-shaped string in a scratch file, a renamed .env and a JSON
+        # fixture, all three of which must be found.
+        import shutil
+        import subprocess
+        key = "ab" * 16
+        with tempfile.TemporaryDirectory() as tmp:
+            clone = os.path.join(tmp, "venv", "build", "clone")
+            os.makedirs(os.path.join(clone, ".github"))
+            shutil.copy(script, os.path.join(clone, ".github", "ci_checks.py"))
+            planted = {"scratch.py": "KEY = '%s'\n" % key,
+                       ".env.bak": "TWOCAPTCHA_KEY=%s\n" % key,
+                       "capture.json": '{"k": "%s"}\n' % key}
+            for name, body in planted.items():
+                with open(os.path.join(clone, name), "w") as handle:
+                    handle.write(body)
+            result = subprocess.run(
+                [sys.executable, os.path.join(clone, ".github", "ci_checks.py"),
+                 "--secret-check"], cwd=clone, capture_output=True, text=True)
+            missed = [n for n in planted if n not in result.stdout]
+            ok &= check("the scan works from a clone under a `venv` directory "
+                        "and reads .py, .env.* and .json files (missed: %s)"
+                        % missed, result.returncode == 1 and not missed)
+
+    # No workflow re-implements a local check inline: an inline
+    # `from output_writer import ...` in a heredoc is code nothing runs
+    # locally, and it is where a renamed row class hides until the first push.
+    wf_dir = os.path.join(REPO_ROOT, ".github", "workflows")
+    if os.path.isdir(wf_dir):
+        local = [m[:-3] for m in os.listdir(REPO_ROOT) if m.endswith(".py")]
+        inline = []
+        for name in sorted(os.listdir(wf_dir)):
+            text = open(os.path.join(wf_dir, name), encoding="utf-8").read()
+            for mod in local:
+                if re.search(r"^\s*(from %s import|import %s\b)" % (mod, mod),
+                             text, re.M):
+                    inline.append("%s imports %s" % (name, mod))
+        ok &= check("no workflow imports a local module inline (%s)" % inline,
+                    not inline)
     return ok
 
 
@@ -2571,7 +2614,7 @@ def test_readme_claims():
     # invisibly.
     ok &= check("measurements carry a date", "2026-09-16" in readme)
 
-    group("The README's numbers match the artefacts on disk (§17)")
+    group("The README's numbers match the artefacts on disk")
     # A number a reader can check is worth more than one they cannot. These
     # are re-derived from the committed fixtures rather than retyped, so a
     # claim that goes stale fails here rather than in a reader's terminal.
@@ -2601,7 +2644,7 @@ def test_readme_claims():
     # The two paid paths were unverified in the first version of this repo
     # and are now measured. Both directions are pinned: a docstring that
     # still says UNMEASURED after the numbers exist is stale, and numbers
-    # written without a run are the thing §13 forbids. If a future change
+    # written without a run are not measurements. If a future change
     # removes the ability to measure them, the label comes back and this
     # check is what says so.
     api = open(os.path.join(REPO_ROOT, "scraper_api_client.py"),
@@ -2622,7 +2665,7 @@ def test_readme_claims():
 
 # The floor the README and CHANGELOG state. A FLOOR rather than the exact
 # count, because an exact count goes stale the next time anyone adds a check
-# and a stale number in a README is worse than no number (§17). Raise it when
+# and a stale number in a README is worse than no number. Raise it when
 # it is comfortably passed; it can only ever be an under-claim.
 CLAIMED_CHECK_FLOOR = 650
 
@@ -2767,6 +2810,447 @@ def test_retries_is_validated_in_every_entry_point():
     return check("--retries is validated in every entry point, so 0 is a usage error", not problems)
 
 
+# ---------------------------------------------------------------------------
+# Atomic writes and CSV formula neutralisation
+# ---------------------------------------------------------------------------
+def test_atomic_writes_and_csv_formulas():
+    group("Writes are atomic: a failed write leaves the previous output whole")
+    import output_writer as ow
+    from unittest import mock
+    ok = True
+    rows = rows_of("tag_feed")
+    with tempfile.TemporaryDirectory() as tmp:
+        prefix = os.path.join(tmp, "out")
+        code = finish_run(rows, prefix, "both", False, blocked=False,
+                          stop_reason="completed", pages_requested=1,
+                          pages_completed=1, start_url="u", final_url="u")
+        ok &= check("a good run writes JSON, CSV and sidecar", code == 0)
+        before = {ext: open(prefix + ext, "rb").read()
+                  for ext in (".json", ".csv", ".meta.json")}
+
+        def boom(*a, **k):
+            raise OSError("disk full (planted)")
+
+        # A crash halfway through each writer must not touch the old file.
+        for name, ext, owner, attr, call in (
+                ("json", ".json", ow.json, "dump",
+                 lambda: ow.write_json(rows, prefix + ".json")),
+                ("meta", ".meta.json", ow.json, "dump",
+                 lambda: ow.write_run_meta(prefix, {"status": "x"})),
+                ("csv", ".csv", ow.csv.DictWriter, "writerow",
+                 lambda: ow.write_csv(rows, prefix + ".csv", row_cls=Post))):
+            with mock.patch.object(owner, attr, boom):
+                raised = _raises(call)
+            ok &= check("%s: an interrupted write raises" % name, raised)
+            ok &= check("%s: ...and the previous file is byte-identical" % name,
+                        open(prefix + ext, "rb").read() == before[ext])
+        leftovers = [n for n in os.listdir(tmp) if n.endswith(".tmp")]
+        ok &= check("no temporary file is left behind (%s)" % leftovers,
+                    not leftovers)
+
+    group("New outputs follow the umask; existing outputs keep their mode")
+    for umask in (0o022, 0o002, 0o077):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = os.umask(umask)
+            try:
+                path = os.path.join(tmp, "new.json")
+                ow.write_json(rows, path)
+                mode = os.stat(path).st_mode & 0o777
+            finally:
+                os.umask(old)
+            ok &= check("umask %03o: a new file is %03o (got %03o)"
+                        % (umask, 0o666 & ~umask, mode),
+                        mode == 0o666 & ~umask)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "kept.csv")
+        open(path, "w").close()
+        os.chmod(path, 0o640)
+        ow.write_csv(rows, path, row_cls=Post)
+        ok &= check("an existing 0640 file keeps 0640",
+                    os.stat(path).st_mode & 0o777 == 0o640)
+
+    group("CSV cells that a spreadsheet would execute are neutralised")
+    evil = Post(sku="aaaaaaaaaaaa", title='=HYPERLINK("http://x","y")',
+                subtitle="@SUM(A1)", author="+1 author", claps=-5,
+                tags=["=1+1", "python"], url="https://medium.com/p/aaaaaaaaaaaa")
+    with tempfile.TemporaryDirectory() as tmp:
+        prefix = os.path.join(tmp, "evil")
+        finish_run([evil], prefix, "both", False, blocked=False,
+                   stop_reason="completed", pages_requested=1,
+                   pages_completed=1, start_url="u", final_url="u",
+                   extra={"csv_cells_escaped": "caller wins"})
+        body = list(csv_module.DictReader(open(prefix + ".csv",
+                                               encoding="utf-8")))[0]
+        data = json.load(open(prefix + ".json", encoding="utf-8"))[0]
+        meta = json.load(open(prefix + ".meta.json", encoding="utf-8"))
+        ok &= check("a formula title gets a leading apostrophe",
+                    body["title"] == "'" + evil.title)
+        ok &= check("@ and + leads are escaped too",
+                    body["subtitle"] == "'@SUM(A1)"
+                    and body["author"] == "'+1 author")
+        ok &= check("a joined list cell is escaped after joining",
+                    body["tags"] == "'=1+1" + LIST_CSV_SEPARATOR + "python")
+        ok &= check("a NUMBER is never escaped (claps -5 stays -5)",
+                    body["claps"] == "-5")
+        ok &= check("the JSON keeps the site's bytes",
+                    data["title"] == evil.title and data["claps"] == -5)
+        ok &= check("the caller's extra wins a name collision in the sidecar",
+                    meta.get("csv_cells_escaped") == "caller wins")
+        finish_run([evil], prefix, "both", False, blocked=False,
+                   stop_reason="completed", pages_requested=1,
+                   pages_completed=1, start_url="u", final_url="u")
+        meta = json.load(open(prefix + ".meta.json", encoding="utf-8"))
+        ok &= check("the sidecar counts the escaped cells (4, got %s)"
+                    % meta.get("csv_cells_escaped"),
+                    meta.get("csv_cells_escaped") == 4)
+    return ok
+
+
+# ---------------------------------------------------------------------------
+# The three engines' page loop, driven with the DRIVER stubbed out
+# ---------------------------------------------------------------------------
+def _load_engine_with_stub_driver(name):
+    """Import `<name>.py` under a private module name with fake driver modules.
+
+    Deliberately not `import playwright_scraper`: that skips wherever the
+    driver is absent, which is the core-only venv and CI's offline job, so a
+    check written that way would never run in the two places that matter
+    most. The engine is read off disk and its driver imports are satisfied
+    by stand-ins; nothing here can reach a browser or the network.
+    """
+    import importlib.util
+    import types
+    from unittest import mock
+
+    def mod(modname, **attrs):
+        m = types.ModuleType(modname)
+        m.__path__ = []
+        for k, v in attrs.items():
+            setattr(m, k, v)
+        return m
+
+    class _Err(Exception):
+        pass
+
+    fakes = {
+        "playwright": mod("playwright"),
+        "playwright.sync_api": mod("playwright.sync_api",
+                                   sync_playwright=mock.MagicMock(),
+                                   Error=type("Error", (_Err,), {}),
+                                   TimeoutError=type("TimeoutError", (_Err,), {})),
+        "pyppeteer": mod("pyppeteer", launch=mock.MagicMock(),
+                         connect=mock.MagicMock()),
+        "selenium": mod("selenium", webdriver=mock.MagicMock()),
+        "selenium.common": mod("selenium.common"),
+        "selenium.common.exceptions": mod(
+            "selenium.common.exceptions",
+            TimeoutException=type("TimeoutException", (_Err,), {}),
+            WebDriverException=type("WebDriverException", (_Err,), {}),
+            JavascriptException=type("JavascriptException", (_Err,), {})),
+        "selenium.webdriver": mod("selenium.webdriver"),
+        "selenium.webdriver.chrome": mod("selenium.webdriver.chrome"),
+        "selenium.webdriver.chrome.options": mod(
+            "selenium.webdriver.chrome.options", Options=mock.MagicMock()),
+        "selenium.webdriver.common": mod("selenium.webdriver.common"),
+        "selenium.webdriver.common.by": mod(
+            "selenium.webdriver.common.by", By=mock.MagicMock()),
+        "selenium.webdriver.support": mod("selenium.webdriver.support"),
+        "selenium.webdriver.support.ui": mod(
+            "selenium.webdriver.support.ui", WebDriverWait=mock.MagicMock()),
+    }
+    spec = importlib.util.spec_from_file_location(
+        "_stubbed_" + name, os.path.join(REPO_ROOT, name + ".py"))
+    engine = importlib.util.module_from_spec(spec)
+    with mock.patch.dict(sys.modules, fakes):
+        spec.loader.exec_module(engine)
+    return engine
+
+
+class _StubResponse:
+    def __init__(self, status):
+        self.status = status
+
+
+class _StubPage:
+    """Answers every driver call the three page loops make. `html` is what
+    each read returns and `status` what every navigation answers."""
+
+    def __init__(self, html, url, status=200):
+        self.html, self.url, self.status = html, url, status
+        self.gotos = 0
+        self.context = self
+
+    def goto(self, *a, **k):
+        self.gotos += 1
+        return _StubResponse(self.status)
+
+    def get(self, url):  # selenium
+        self.goto()
+
+    def content(self):
+        return self.html
+
+    @property
+    def page_source(self):
+        return self.html
+
+    @property
+    def current_url(self):
+        return self.url
+
+    def __getattr__(self, attr):
+        # Everything else (waits, evaluate, reload, screenshot, element
+        # queries...) is a no-op returning an empty list: "no cards".
+        return lambda *a, **k: []
+
+
+class _StubSession:
+    def __init__(self, page):
+        self.page = self.driver = page
+        self.bridge = self  # pyppeteer: bridge.run(coro) -> value
+        self.relaunches = 0
+
+    def run(self, value):
+        return value
+
+    def relaunch(self):
+        self.relaunches += 1
+
+
+def _drive_fetch_one_page(engine, name, page, out_dir, solve_mode="when-blocked",
+                          key=None, force_state=None):
+    """Run `engine._fetch_one_page` once over `page`; report what it did."""
+    import logging as _logging
+    import time as _time
+    import types
+    from unittest import mock
+
+    session = _StubSession(page)
+    bought = []
+    statuses = []
+
+    def solve_recaptcha(*a, **k):
+        bought.append(1)
+        return "stub-token"
+
+    challenge = types.SimpleNamespace(kind="recaptcha-v2", source="stub",
+                                      sitekey="stub-sitekey", action=None)
+    real_classify = page_flow.classify
+
+    def spy_classify(html, status=None, url=""):
+        statuses.append(status)
+        if force_state is not None:
+            return force_state
+        return real_classify(html, status, url)
+
+    patches = dict(
+        solve_recaptcha=solve_recaptcha,
+        detect_recaptcha_v3=lambda *a, **k: None,
+        detect_recaptcha_in_page=lambda *a, **k: None,
+        reconcile_detections=lambda *a, **k: challenge,
+        _scroll_the_feed=lambda *a, **k: {},
+        time=types.SimpleNamespace(sleep=lambda s: None, time=_time.time,
+                                   monotonic=_time.monotonic))
+    if name == "playwright_scraper":
+        patches.update(_content_when_settled=lambda p, *a, **k: p.html)
+    else:
+        patches.update(_content=lambda sess: sess.page.html,
+                       _current_url=lambda sess: sess.page.url,
+                       _sleep=lambda ms: None)
+
+    argv = ["x", "--url", page.url, "--retries", "1", "--retry-delay", "0",
+            "--solve-captcha", solve_mode,
+            "--out", os.path.join(out_dir, "stub")]
+    # No credential from the caller's environment reaches these args, and the
+    # solver is stubbed regardless, so nothing is ever sent anywhere.
+    env = {k: v for k, v in os.environ.items()
+           if k != "TWOCAPTCHA_KEY" and not k.startswith("MEDIUM_")}
+    with mock.patch.object(sys, "argv", argv), \
+            mock.patch.dict(os.environ, env, clear=True):
+        args = engine.parse_args()
+    args.twocaptcha_key = key
+    args.dump_html = None
+    error, outcome = None, None
+    _logging.disable(_logging.CRITICAL)  # the loop's own log is not the subject
+    with mock.patch.multiple(engine, **patches), \
+            mock.patch.object(page_flow, "classify", spy_classify):
+        try:
+            outcome = engine._fetch_one_page(session, args, None, 1, page.url)
+        except Exception as e:  # noqa: BLE001 — the crash IS the finding
+            error = "%s: %s" % (type(e).__name__, e)
+        finally:
+            _logging.disable(_logging.NOTSET)
+    return {"outcome": outcome, "error": error, "bought": len(bought),
+            "gotos": page.gotos, "statuses": statuses}
+
+
+def test_engines_fetch_one_page_with_stubbed_drivers():
+    group("engines: one page loop each, driver stubbed (budget, parse "
+          "policy, HTTP status)")
+    ok = True
+    attempts = page_flow.BLOCK_RETRIES_WITHOUT_POOL + 1
+    for name in ENGINES:
+        engine = _load_engine_with_stub_driver(name)
+        with tempfile.TemporaryDirectory() as tmp:
+            # 1. The paid budget covers BOTH call sites over every retry: a
+            # page that stays a challenge, with a reCAPTCHA reported on it,
+            # a key set and --solve-captcha always, no proxy pool.
+            r = _drive_fetch_one_page(
+                engine, name, _StubPage(fixture("challenge"),
+                                        URLS["challenge"], 403),
+                tmp, solve_mode="always", key="stub-key")
+            ok &= check("%s: %d attempt(s) bought %d solve(s), limit %d (%s)"
+                        % (name, r["gotos"], r["bought"],
+                           page_flow.SOLVES_PER_PAGE, r["error"]),
+                        r["error"] is None and r["gotos"] == attempts
+                        and 1 <= r["bought"] <= page_flow.SOLVES_PER_PAGE)
+
+            # 2. The state policy gates the PARSE, not only the wait: a page
+            # classified `empty` yields no rows even if it carries stories.
+            r = _drive_fetch_one_page(
+                engine, name, _StubPage(fixture("tag_feed"), URLS["tag_feed"]),
+                tmp, force_state="empty")
+            ok &= check("%s: a page classified empty emits no rows (%s, %s)"
+                        % (name, r["error"],
+                           r["outcome"] and len(r["outcome"].products)),
+                        r["error"] is None and r["outcome"] is not None
+                        and r["outcome"].products == [])
+            r = _drive_fetch_one_page(
+                engine, name, _StubPage(fixture("tag_feed"), URLS["tag_feed"]),
+                tmp)
+            ok &= check("%s: ...while the same page as content still parses"
+                        % name, r["outcome"] is not None
+                        and len(r["outcome"].products) > 0)
+
+            # 3. The navigation's status reaches the classifier. Selenium has
+            # no status to give, so it is exempt and classifies on the body.
+            if name != "selenium_scraper":
+                r = _drive_fetch_one_page(
+                    engine, name, _StubPage(fixture("blocked_waf"),
+                                            URLS["blocked_waf"], 403), tmp)
+                ok &= check("%s: the HTTP status reaches the classifier (%s)"
+                            % (name, r["statuses"][:2]),
+                            403 in r["statuses"])
+    return ok
+
+
+# ---------------------------------------------------------------------------
+# Public files cite nothing the public cannot open
+# ---------------------------------------------------------------------------
+# Assembled from pieces so this file does not match its own scan.
+_PRIVATE_CITATIONS = (
+    "CLAUDE" + ".md", "claude" + "_2scraper", "2scraper" + "_repo_rules",
+    "play" + "book",
+)
+_SECTION_REF = re.compile("§" + r" ?\d")
+
+
+def _public_text_files():
+    import subprocess
+    try:
+        listed = subprocess.run(["git", "ls-files"], cwd=REPO_ROOT,
+                                capture_output=True, text=True, check=True)
+        names = listed.stdout.split("\n")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        names = []
+        for base, dirs, files in os.walk(REPO_ROOT):
+            dirs[:] = [d for d in dirs if d not in (".git", "__pycache__")
+                       and not os.path.exists(os.path.join(base, d, "pyvenv.cfg"))]
+            names += [os.path.relpath(os.path.join(base, f), REPO_ROOT)
+                      for f in files]
+    return [n for n in names if n and os.path.isfile(os.path.join(REPO_ROOT, n))
+            and not n.endswith((".png", ".jpg", ".gz", ".zip"))]
+
+
+def test_no_private_citations():
+    group("Public files cite nothing a reader cannot open")
+    hits = []
+    files = _public_text_files()
+    for name in files:
+        try:
+            text = open(os.path.join(REPO_ROOT, name), encoding="utf-8").read()
+        except (UnicodeDecodeError, OSError):
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if (any(token in line for token in _PRIVATE_CITATIONS)
+                    or _SECTION_REF.search(line)):
+                hits.append("%s:%d" % (name, lineno))
+    ok = check("scanned the repository's files (%d)" % len(files), len(files) > 20)
+    ok &= check("no file cites a private note or a numbered section of one "
+                "(%s)" % hits[:8], not hits)
+    return ok
+
+
+def test_dump_shapes_are_ignored():
+    group("Every dump a run can write is git-ignored, and nothing shipped is")
+    import subprocess
+    if not os.path.isdir(os.path.join(REPO_ROOT, ".git")):
+        print("  (not a git checkout, so .gitignore has nothing to say here)")
+        return True
+    ok = True
+
+    def ignored(path):
+        return subprocess.run(["git", "check-ignore", "-q", "--no-index", path],
+                              cwd=REPO_ROOT).returncode == 0
+
+    for path in ("medium_posts.json", "x.json.page3", "dump.page12",
+                 "canary_archive.html", "live/x.html", "out/run.json",
+                 "tag_page1_debug.html", ".env.bak", "captures/a.html"):
+        ok &= check("ignored: %s" % path, ignored(path))
+    for path in ("sample_output.json", "fixtures_generated.json",
+                 ".env.example", ".github/workflows/tests.yml",
+                 "tests/test_smoke.py", "README.md", "smoke_test.py"):
+        ok &= check("NOT ignored: %s" % path, not ignored(path))
+    return ok
+
+
+def test_numeric_flags_reject_impossible_values():
+    group("Numeric flags refuse values that cannot mean anything, by name")
+    import io as _io
+    from unittest import mock
+    ok = True
+    bad = (("--pages", "0"), ("--pages", "-1"), ("--delay", "-1"),
+           ("--retry-delay", "-1"), ("--concurrency", "0"),
+           ("--proxy-block-retries", "-1"), ("--retries", "0"))
+    for name in ENGINES:
+        engine = _load_engine_with_stub_driver(name)
+        for flag, value in bad:
+            argv = ["x", "--url", "https://medium.com/tag/python", flag, value]
+            err = _io.StringIO()
+            code = None
+            with mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(sys, "stderr", err):
+                try:
+                    engine.parse_args()
+                except SystemExit as e:
+                    code = e.code
+            ok &= check("%s %s %s: usage error naming the flag" % (name, flag, value),
+                        code == 2 and "argument %s:" % flag in err.getvalue())
+    return ok
+
+
+def test_canary_is_red_unless_it_read_medium():
+    group("The canary is green only when it actually read Medium")
+    path = os.path.join(REPO_ROOT, ".github", "workflows", "canary.yml")
+    if not os.path.isdir(os.path.join(REPO_ROOT, ".github")):
+        print("  (no .github directory here, so there is no canary to check)")
+        return True
+    text = open(path, encoding="utf-8").read()
+    verdict = text[text.find("Verdict"):]
+    ok = check("the canary has a verdict step", "Verdict" in text)
+    for code in ("3", "4", "5"):
+        line = next((l for l in verdict.splitlines()
+                     if l.strip().startswith(code + ")")), "")
+        ok &= check("exit %s fails the job, not a warning" % code,
+                    "::error::" in line and "fail=1" in line)
+    ok &= check("an unset exit code (a step that never ran) fails too",
+                any(l.strip().startswith('"")') and "fail=1" in l
+                    for l in verdict.splitlines()))
+    ok &= check("no exit-3 path anywhere is only a warning",
+                not re.search(r"^\s*3\)[^\n]*::warning::", text, re.M))
+    return ok
+
+
 def main() -> int:
     ok = True
     skips = []
@@ -2811,6 +3295,12 @@ def main() -> int:
     ok &= test_readme_claims()
     ok &= test_x_debug_header_is_redacted()
     ok &= test_scraper_api_payload_and_status()
+    ok &= test_atomic_writes_and_csv_formulas()
+    ok &= test_engines_fetch_one_page_with_stubbed_drivers()
+    ok &= test_no_private_citations()
+    ok &= test_dump_shapes_are_ignored()
+    ok &= test_numeric_flags_reject_impossible_values()
+    ok &= test_canary_is_red_unless_it_read_medium()
 
     passed = _total_checks - len(_failures)
     if passed < CLAIMED_CHECK_FLOOR:

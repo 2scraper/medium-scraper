@@ -11,8 +11,8 @@
 A Medium story scraper. Reads a tag feed, a tag's day archive, an author's
 profile or a single story, and writes JSON and CSV with one row per story.
 
-Four engines — Playwright (primary), Selenium, pyppeteer, and 2Captcha's
-Scraping Browser over CDP. All four produce the same rows, the same exit
+Four engines — Playwright (primary), Selenium, pyppeteer, and the 2Captcha
+Scraping Browser API over CDP. All four produce the same rows, the same exit
 codes and the same run metadata.
 
 ```bash
@@ -206,8 +206,7 @@ script runs, and 2Captcha solves what comes out as `TurnstileTaskProxyless`.
 measurement above rather than any limit of the solver: the challenge here is
 transient — 9 of 27 first attempts met it, and all 9 were served in full on
 the next attempt in a fresh context. A retry costs nothing and a solve costs
-money, so this scraper never spends one and nothing is ever charged for a
-block here. If you need it on a site where the challenge is not transient,
+money, so this scraper never sends that challenge to a solver. If you need it on a site where the challenge is not transient,
 `foodpanda-scraper` in this family implements the interception and solves it.
 
 ---
@@ -224,7 +223,7 @@ measured on 2026-09-16, and it is not "getting in":
 | path | what it got | what it costs |
 |---|---|---|
 | **Scraper API** (`scraper_api_client.py`) | all four modes, HTTP 200, rows **identical** to a local browser's — including the whole 2.3 MB archive day in one request | $0.0005 a request, no browser at all |
-| **Scraping Browser** (`--cdp-endpoint`) | 254 rows over two archive days; **55 rows from an author page against a local browser's 10** | one live connection per profile |
+| **2Captcha Scraping Browser API** (`--cdp-endpoint`) | 254 rows over two archive days; **55 rows from an author page against a local browser's 10** | one live connection per profile |
 
 The author-page figure is the interesting one. An author's feed extends by
 scrolling, and from an ordinary address that scroll adds nothing — the POST
@@ -237,7 +236,10 @@ straight into `--mode post`.
 
 **Captcha solving specifically buys nothing here.** Medium's refusal is
 Cloudflare's managed challenge, which publishes no sitekey, so this scraper
-never spends a solve on a block and nothing is ever charged for one.
+never sends it to a solver. The only paid path is a reCAPTCHA widget
+rendered on the page, which was not seen on Medium in testing: with a key
+set it buys **at most one solve per page**, however many times the page is
+retried.
 
 And the thing that actually limits a long run is **rate**: an archive walk
 pulls 2.3 MB per day URL, and one address went from serving a whole day to
@@ -275,7 +277,7 @@ identical output and exit codes.
 | 2 | bad usage |
 | 3 | blocked |
 | 4 | zero stories |
-| 5 | remote API error |
+| 5 | nothing was obtained: a remote API error, a navigation timeout, a dead or unauthenticated proxy, a refused scroll batch with no rows gathered |
 | 6 | partial run |
 
 A run that finds nothing **writes nothing** — last night's good output is not

@@ -2,7 +2,7 @@
 product_parser.py
 -----------------
 Medium extraction. THIS FILE IS THE SITE — everything else in the repo is
-family core with a handful of named constants (CLAUDE.md §1).
+family core with a handful of named constants.
 
 What Medium actually publishes, measured 2026-09-16
 ---------------------------------------------------
@@ -50,7 +50,7 @@ Four traps this file exists to avoid
 4.  **`challenge-platform` appears on every page Medium serves.** Twice, on
     good pages and refused ones alike — it is Cloudflare's ordinary script
     injection, not a signal. Every marker below was counted on a page known
-    to be good before it was allowed into the set (CLAUDE.md §18).
+    to be good before it was allowed into the set.
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ logger = logging.getLogger("product_parser")
 MEDIUM_HOSTS = ("medium.com", "www.medium.com")
 
 # Hosts that were Medium publications and are not any more. Refusing these by
-# name, WITH the reason, is the §5 rule: "is not a Medium site" is false and
+# name, WITH the reason, is deliberate: "is not a Medium site" is false and
 # sends the reader looking for a typo.
 LEFT_MEDIUM: Dict[str, str] = {
     # Measured 2026-09-16: HTTP 200, 210 KB, 25 <article>, two JSON-LD blocks,
@@ -276,7 +276,7 @@ def category_from_url(url: str) -> Optional[str]:
 def unsupported_reason(url: str) -> Optional[str]:
     """Why this URL cannot be run, in the site's own terms, or None.
 
-    Every refusal here names a MEASUREMENT. §5's rule: a wrong reason costs
+    Every refusal here names a MEASUREMENT. The rule: a wrong reason costs
     more than a missing one, because it sends the reader looking for a typo
     that is not there.
     """
@@ -318,7 +318,7 @@ def is_supported_host(url: str) -> bool:
 
 
 # ===========================================================================
-# Pagination (§7)
+# Pagination
 # ===========================================================================
 # Only the day archive is addressable, and the whole repo leans on it.
 #
@@ -356,7 +356,7 @@ def page_url(url: str, page: int) -> Optional[str]:
     would LOOK like it worked: a `?page=2` on a tag feed is ignored by Medium
     and answers with the first items again, so a run that trusted it would
     find no new sku, call the listing exhausted, and report a complete run
-    holding one page (§18).
+    holding one page.
     """
     if page <= 1:
         return url
@@ -423,12 +423,12 @@ SELECTORS: Dict[str, str] = {
 
 # How many story links mean "this page has rendered". Must be > 1: waiting
 # for one match resolves on the site's own nav links long before a feed
-# paints (§5).
+# paints.
 MIN_CARD_MATCHES = 2
 
 # Deliberately empty. Medium publishes no `link[rel=next]`, no numbered
 # anchors and no next control in any mode — the archive walk builds its own
-# addresses from the date and `page_url` above, which is §7's second layer.
+# addresses from the date and `page_url` above, which is the second pagination layer.
 NEXT_PAGE_SELECTOR = ""
 
 
@@ -446,7 +446,7 @@ def count_cards(html: Optional[str]) -> int:
 
     DISTINCT, not links: a Medium card links its story twice (image and
     title), so counting links reports a two-card page as four and a readiness
-    wait for four matches resolves on two (§4).
+    wait for four matches resolves on two.
     """
     if not html:
         return 0
@@ -473,7 +473,7 @@ _OBVINIT_RE = re.compile(r'window\["obvInit"\]\((\{.*?\})\)\s*//\s*\]\]>', re.S)
 # `text -\x3e input_ids` — did not. The DOM fallback caught it and returned
 # 120 rows with titles and authors and NOTHING else, which is the shape of
 # this failure: not a crash, not an empty run, just a whole page quietly
-# demoted to the thinnest of the four read paths (§15).
+# demoted to the thinnest of the four read paths.
 #
 # Rewritten to the JSON spelling of the same character rather than decoded,
 # so string contents are untouched. The lookbehind counts backslashes: an
@@ -539,8 +539,8 @@ def archive_years(html: Optional[str]) -> List[str]:
     """Which years this tag has stories in, from the site's own index.
 
     `archiveIndex.yearlyBuckets` on a day-archive page. The site publishing
-    its own index is why an archive walk can be planned rather than guessed
-    (§7) — though note the walk still stops on data, because a year having
+    its own index is why an archive walk can be planned rather than guessed —
+    though note the walk still stops on data, because a year having
     stories says nothing about any particular day in it.
     """
     index = obvinit_payload(html).get("archiveIndex") or {}
@@ -884,7 +884,7 @@ def _jsonld_entities(blocks: Iterable[Any]) -> List[dict]:
                 continue
             # `@graph` is legal schema.org and carries the products on some
             # sites while `itemListElement` carries them on others; reading
-            # only one reports an empty category for an unread format (§4).
+            # only one reports an empty category for an unread format.
             for key in ("mainEntity", "itemListElement", "@graph"):
                 value = item.get(key)
                 if isinstance(value, list):
@@ -896,7 +896,7 @@ def _jsonld_entities(blocks: Iterable[Any]) -> List[dict]:
 
 
 def _jsonld_image(value: Any) -> Optional[str]:
-    """All four legal shapes of schema.org `image` (§4)."""
+    """All four legal shapes of schema.org `image`."""
     if isinstance(value, str):
         return value or None
     if isinstance(value, dict):
@@ -969,8 +969,7 @@ def _card_of(anchor: Any) -> Any:
     a second LINK does: a Medium card links its story twice, so a walk that
     stopped at "more than one story link" would never leave the anchor and
     every row would come back with nothing but a url. Capped so a malformed
-    document cannot walk to <body> and hand one card its neighbours' values
-    (§4).
+    document cannot walk to <body> and hand one card its neighbours' values.
     """
     node = anchor
     best = anchor
@@ -1003,7 +1002,7 @@ def _in_card(anchor: Any) -> bool:
     publication's "About" tab is itself a Medium post and its nav link
     carries a 12-hex id, so an id-shaped href alone is NOT evidence of a
     story — reading one produced a row titled "About" pointing at
-    `medium.com/p/…` with every other column null (§4's junk-link case).
+    `medium.com/p/…` with every other column null (the junk-link case).
     """
     node = getattr(anchor, "parent", None)
     for _ in range(_WIDEN_CAP + 4):
@@ -1024,7 +1023,7 @@ def posts_from_dom(html: Optional[str], base_url: str = "") -> Dict[str, dict]:
     Deliberately reads only what a card actually prints. It does NOT guess at
     claps or dates from card text: Medium renders those inconsistently
     between the two renderers, and a wrong number in a populated column is
-    worse than a null (§8).
+    worse than a null.
 
     Only links INSIDE a card are read. A page whose cards have not painted
     contributes nothing here rather than contributing its navigation — which
@@ -1100,7 +1099,7 @@ def _absolute(base_url: str, href: str) -> str:
 
 
 # ===========================================================================
-# Page state (§8, §17, §18)
+# Page state
 # ===========================================================================
 # Every marker below was COUNTED on a page known to be good before it was
 # allowed in. `challenge-platform` is the one that did not make it: it
@@ -1126,7 +1125,7 @@ CHALLENGE_MARKERS: Tuple[str, ...] = (
 # signal. The family's usual reCAPTCHA
 # marker is a false positive on this site, and including it made a perfectly
 # good 364 KB tag feed report "challenge: recaptcha". A marker that matches
-# every page is worse than no marker (§18); both entries below were counted
+# every page is worse than no marker; both entries below were counted
 # at 0 on all four good pages before being allowed in.
 BOT_CHALLENGE_MARKERS: Tuple[str, ...] = (
     "cf-turnstile",                 # 0 on good pages, 1 on the challenge
@@ -1144,7 +1143,7 @@ BLOCK_MARKERS: Tuple[str, ...] = (
 
 # Medium's own asset hosts. A served page is built out of them; an
 # interstitial, a WordPress site that used to be a publication, and
-# Chromium's own network-error page are not (§8, §18).
+# Chromium's own network-error page are not.
 #
 # All three hosts are needed, not one: the legacy archive renderer ships ZERO
 # `cdn-client.medium.com` references, so anchoring on that alone would report
@@ -1161,7 +1160,7 @@ _ASSET_MIN_MATCHES = 3
 # injects its own turnstile hunter into every page it loads, so `cf-turnstile`
 # appears in the markup of a perfectly good listing page fetched over
 # --cdp-endpoint. This repo's marker set CAN match one, which is the
-# condition CLAUDE.md §8 sets for adding the filter — the siblings whose sets
+# condition for adding the filter — the siblings whose sets
 # cannot were checked and deliberately left alone.
 _EXTENSION_SCRIPT_RE = re.compile(
     r"<script[^>]+src=[\"'](?:chrome|moz)-extension://[^\"']*[\"'][^>]*>"
@@ -1194,7 +1193,7 @@ def detect_bot_challenge(html: Optional[str], url: str = "") -> Optional[str]:
     Only ever REFINES a verdict the page-state policy has already reached: it
     is not consulted for a page that classified as `content` or `empty`,
     because a detection on a page whose stories are already parsed guards
-    nothing, and one on a correct empty answer is simply wrong (§18).
+    nothing, and one on a correct empty answer is simply wrong.
     """
     lowered = strip_extension_scripts(html).lower()
     if any(marker in lowered for marker in BOT_CHALLENGE_MARKERS):
@@ -1216,7 +1215,7 @@ def detect_block_marker(html: Optional[str]) -> Optional[str]:
 
 # Medium's own empty answers, in the copy it actually prints. A POSITIVE
 # signal only: a feed with no stories and none of this copy is a page still
-# painting, and the two want opposite responses (§18).
+# painting, and the two want opposite responses.
 NO_RESULTS_MARKERS: Tuple[str, ...] = (
     "no stories",
     "there are no stories",
@@ -1235,8 +1234,8 @@ def detect_page_state(html: Optional[str], status: Optional[int] = None,
                       url: str = "") -> str:
     """Which of five states this response is.
 
-    Ordered by how much each signal PROVES, not by what is cheap to check
-    (§17). `status` is positional and second, matching `page_flow.classify`;
+    Ordered by how much each signal PROVES, not by what is cheap to check.
+    `status` is positional and second, matching `page_flow.classify`;
     two engines in a sibling repo passed it as a keyword and both crashed on
     their first fetch, invisibly to every offline check.
 
@@ -1347,7 +1346,7 @@ def _merge(values: Dict[str, dict]) -> Tuple[dict, str]:
     richer view already set. `data_source` records every view that
     contributed, joined with '+', so a diff between two runs that read the
     same story through different views reports `source_changed` rather than
-    inventing a change (§8).
+    inventing a change.
     """
     merged: dict = {}
     contributors: List[str] = []
@@ -1382,7 +1381,7 @@ def parse_posts(html: str, url: str, page: int = 1,
         except Exception as exc:                      # pragma: no cover
             # One unreadable view must not cost the other three. Logged
             # rather than swallowed: a path that silently returns {} on error
-            # is this codebase's most common historical bug class (§8).
+            # is this codebase's most common historical bug class.
             logger.warning("%s extraction failed on %s: %s", name, url, exc)
             views[name] = {}
 

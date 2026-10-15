@@ -208,7 +208,7 @@ class _Session:
         # GraphQL responses — see `_graphql_refused_count`. It has to be
         # asked for at driver creation; there is no way to turn it on later.
         # Without it this engine would report `complete` where its twins
-        # report `partial` on the identical run (§6).
+        # report `partial` on the identical run.
         options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
         self.driver = webdriver.Chrome(options=options)
@@ -243,7 +243,7 @@ class _Session:
         # which defeats the flag rather than breaking it, because the run
         # then presents a Windows fingerprint's screen, locale and timezone
         # over a local Chromium's UA. That is the identity MISMATCH the flag
-        # exists to avoid (§16, where the same defect was live in four
+        # exists to avoid (where the same defect was live in four
         # sibling repos at once).
         from fingerprint_client import (get_fingerprint, fingerprint_user_agent,
                                         playwright_init_script)
@@ -290,7 +290,7 @@ class _Session:
 # Only "how to ask this driver" lives here. Note the JS dialect: Selenium's
 # execute_script runs a function BODY and needs an explicit `return`, unlike
 # the `() => expr` both other engines take — which is exactly why page_flow
-# names operations instead of passing JavaScript across the boundary (§1).
+# names operations instead of passing JavaScript across the boundary.
 def _count(session, selector: str) -> int:
     try:
         return len(session.driver.find_elements(By.CSS_SELECTOR, selector))
@@ -317,7 +317,7 @@ def _scroll_to_bottom(session) -> None:
     Note the dialect: Selenium's `execute_script` takes a function BODY with
     an explicit `return`, where Playwright and pyppeteer take `() => expr`.
     That difference is exactly why `page_flow` names the OPERATION and each
-    engine spells it itself (§1).
+    engine spells it itself.
     """
     try:
         session.driver.execute_script(
@@ -342,8 +342,8 @@ def _page_height(session) -> Optional[int]:
 #
 # This is NOT a cosmetic difference. If this engine always answered 0, it
 # would report `complete` where its twins report `partial` on the identical
-# run, and that is precisely the drift the shared modules exist to prevent
-# (§6). The log has to be ENABLED at driver creation; see `_Session.open`.
+# run, and that is precisely the drift the shared modules exist to prevent.
+# The log has to be ENABLED at driver creation; see `_Session.open`.
 _GRAPHQL_PATH = "/graphql/"
 
 
@@ -399,7 +399,7 @@ def _current_url(session) -> str:
 
 def _classify(session, html: str, status=None) -> str:
     # `status` is POSITIONAL and second. Two engines in a sibling repo passed
-    # it as a keyword and both crashed on their first fetch (§17); this
+    # it as a keyword and both crashed on their first fetch; this
     # repo's smoke suite binds every shared-module call in every engine
     # against the callee's real signature for that reason.
     return page_flow.classify(html, status, _current_url(session))
@@ -409,7 +409,7 @@ def _parse_for_mode(html: str, url: str, args, page_num: int = 1) -> List:
     return parse_posts(html, url, page=page_num, mode=args.mode)
 
 
-def handle_captcha_if_present(session, args) -> bool:
+def handle_captcha_if_present(session, args, budget) -> bool:
     """Detect and solve a challenge. True if something was solved.
 
     Same contract and same reconciliation as the Playwright engine, including
@@ -448,6 +448,10 @@ def handle_captcha_if_present(session, args) -> bool:
         logger.warning("No 2captcha API key, so this challenge cannot be "
                        "solved — continuing with whatever the page holds.")
         return False
+    if not budget.spend():
+        # Checked BEFORE the purchase, and shared with the other call site:
+        # see page_flow.SolveBudget.
+        return False
     try:
         token = solve_recaptcha(challenge, args.twocaptcha_key,
                                 api_version=args.captcha_api,
@@ -477,7 +481,7 @@ def _scroll_the_feed(session, args, html: str, page_num: int) -> dict:
     the 11 attempts measured, while the HTML itself came back 200. So the
     expected outcome here is "scrolled, nothing arrived", and that is
     reported rather than fought: more rounds against a feed the site will not
-    extend only spends time (§8).
+    extend only spends time.
 
     Deliberately no `target`. The only total Medium publishes is
     `tag.postCount` — 257,497 for `python` — which is the size of the tag's
@@ -516,7 +520,8 @@ def _fetch_one_page(session, args, pool, page_num: int,
     block_retries = 0 if not page_flow.RETRY_ON_BLOCKED else (
         args.proxy_block_retries if has_pool
         else page_flow.BLOCK_RETRIES_WITHOUT_POOL)
-    solves_bought = 0
+    # One allowance for every attempt and both call sites (SolveBudget).
+    budget = page_flow.SolveBudget()
     html, state, load_failed = None, "ok", False
 
     for block_attempt in range(block_retries + 1):
@@ -553,7 +558,7 @@ def _fetch_one_page(session, args, pool, page_num: int,
                 if refused:
                     # NOT the end of the listing. Reporting a refusal as
                     # "exhausted" would make a throttled run say "complete"
-                    # while holding its first batch (§7).
+                    # while holding its first batch.
                     outcome.state = "no_turnover"
                     outcome.load_failed = True
                     outcome.final_url = _current_url(session)
@@ -590,10 +595,14 @@ def _fetch_one_page(session, args, pool, page_num: int,
         if load_failed:
             break
 
-        if handle_captcha_if_present(session, args):
+        if handle_captcha_if_present(session, args, budget):
             _sleep(1000)
 
         html = _content(session) or ""
+        # No status here: `driver.get()` returns None and WebDriver exposes
+        # no HTTP status at all, so this engine classifies on the body alone.
+        # Both of Medium's refusals are recognised by body, so the gap is
+        # only a refusal with no recognisable page.
         state = _classify(session, html)
 
         if page_flow.is_unpainted(state, html):
@@ -608,10 +617,8 @@ def _fetch_one_page(session, args, pool, page_num: int,
             html = _content(session) or html
             state = _classify(session, html)
 
-        if (page_flow.should_solve(state)
-                and solves_bought < page_flow.SOLVES_PER_PAGE):
-            solves_bought += 1
-            if handle_captcha_if_present(session, args):
+        if page_flow.should_solve(state) and budget.available():
+            if handle_captcha_if_present(session, args, budget):
                 _sleep(1000)
                 html = _content(session) or html
                 state = _classify(session, html)
@@ -643,7 +650,7 @@ def _fetch_one_page(session, args, pool, page_num: int,
                 # new context, while waiting inside the same context cleared
                 # none. `page_flow.RETRY_NEEDS_FRESH_CONTEXT` says so, and a
                 # constant no engine consulted would be dead policy dressed
-                # up as enforcement (§17).
+                # up as enforcement.
                 #
                 # NOT relaunched over --cdp-endpoint: a Scraping Browser
                 # profile allows one live connection, so reconnecting risks
@@ -720,7 +727,16 @@ def _fetch_one_page(session, args, pool, page_num: int,
         logger.info("Saved the snapshot the parser sees to %s (%d bytes).",
                     dump_path, len(html or ""))
 
-    products = _parse_for_mode(html or "", _current_url(session), args, page_num)
+    # The state policy decides whether this page is parsed at all, not only
+    # whether it is waited for and scrolled. A page classified `empty` is the
+    # site's own "nothing here" answer; parsing it anyway emitted rows from
+    # whatever else the page carried, and reported them as hits.
+    if page_flow.should_parse(state):
+        products = _parse_for_mode(html or "", _current_url(session), args, page_num)
+    else:
+        products = []
+        logger.info("Page %d is %s, which the state policy does not parse.",
+                    page_num, state)
     logger.info("Parsed %d row(s) from page %d.", len(products), page_num)
 
     # The size of the tag's WHOLE catalogue, where Medium states one — 257,497
@@ -762,7 +778,7 @@ def _fetch_one_page(session, args, pool, page_num: int,
         # with reading time, word count and language); `apollo` carries claps
         # and responses but no reading time on a tag feed; `jsonld` and `dom`
         # carry neither. Reported rather than warned about, because which one
-        # answers is a property of the URL (§9).
+        # answers is a property of the URL.
         from collections import Counter
         views = Counter(p.data_source for p in products)
         logger.info("Rows by view on page %d: %s.", page_num,
@@ -795,7 +811,7 @@ def scrape(args) -> int:
                        "the remote browser has its own exit.")
         pool = None
 
-    # Two shapes of pagination, and the URL picks which (§7). A day archive
+    # Two shapes of pagination, and the URL picks which. A day archive
     # is a real independent address; the other three modes have no address
     # for batch 2 and advance by scrolling.
     by_url = paginates_by_url(args.url)
@@ -807,7 +823,7 @@ def scrape(args) -> int:
                            page_flow.concurrency_refusal(args.url))
         else:
             # A DOCUMENTED ENGINE LIMIT, in the same class as this family's
-            # "Selenium cannot authenticate a remote CDP endpoint" (§6): the
+            # "Selenium cannot authenticate a remote CDP endpoint": the
             # worker pool is implemented in the Playwright engine only. Said
             # out loud rather than run as one worker quietly, which would
             # look like the flag did something.
@@ -829,7 +845,7 @@ def scrape(args) -> int:
 
         elif by_url:
             seen_keys.update(p.sku for p in first.products if p.sku is not None)
-            # VERIFY before planning (§7). A tag day with no stories does not
+            # VERIFY before planning. A tag day with no stories does not
             # 404 — it redirects up to the month view, which is a different
             # renderer holding a different set of stories.
             drift = redirected_away(args.url, first.final_url or args.url)
@@ -987,27 +1003,30 @@ def parse_args():
                         "All four yield the same row — what differs is how "
                         "much of it Medium sends (see the module docstring).")
     p.add_argument("--category", default=None,
-                   help="Label to tag output rows with. Filled from the URL "
-                        "by default.")
-    p.add_argument("--pages", type=int, default=1,
+                   help="Accepted so a command line shared with the other "
+                        "scrapers in this family still parses, and NOT used: "
+                        "a Medium row has no category column (its tags are in "
+                        "`tags`). A warning says so when it is passed.")
+    p.add_argument("--pages", type=page_flow.at_least("--pages", 1), default=1,
                    help=f"Number of pages to walk (default 1, cap {PAGE_CAP}). "
                         f"In --mode archive a page is one day with its own "
                         f"address; every other mode has no per-page address "
                         f"(`?page=2` is ignored and the feed returns its "
                         f"first items again), so a page there is one settled "
                         f"scroll batch.")
-    p.add_argument("--delay", type=float, default=3.0,
+    p.add_argument("--delay", type=page_flow.at_least("--delay", 0, float), default=3.0,
                    help="Delay between batches, seconds (default 3.0). The "
                         "rate matters more than the address on this site, so "
                         "this is the lever that matters.")
-    p.add_argument("--concurrency", type=int, default=1, metavar="N",
+    p.add_argument("--concurrency", type=page_flow.at_least("--concurrency", 1), default=1, metavar="N",
                    help="Accepted for family compatibility and not "
                         "implemented in this engine: the worker pool lives in "
                         "playwright_scraper.py, and this engine walks archive "
                         "days one at a time with identical output.")
     p.add_argument("--retries", type=page_flow.attempts, default=3,
                    help="Attempts per page load before giving up (default 3).")
-    p.add_argument("--retry-delay", type=float, default=2.0,
+    p.add_argument("--retry-delay",
+                   type=page_flow.at_least("--retry-delay", 0, float), default=2.0,
                    help="Seconds before the first page-load retry, doubling "
                         "thereafter (default 2.0)")
     p.add_argument("--format", choices=["json", "csv", "both"], default="both")
@@ -1029,7 +1048,8 @@ def parse_args():
                         "current browser session.")
     p.add_argument("--proxy-shuffle", action="store_true",
                    help="Shuffle the pool at startup.")
-    p.add_argument("--proxy-block-retries", type=int, default=2,
+    p.add_argument("--proxy-block-retries",
+                   type=page_flow.at_least("--proxy-block-retries", 0), default=2,
                    help="Retries from other exits when a page is refused.")
     p.add_argument("--twocaptcha-key", default=None, help="2captcha.com API key")
     p.add_argument("--allow-empty", action="store_true",
@@ -1073,7 +1093,7 @@ def parse_args():
     # `_chrome_ua` builds, from the browser's own version — was never
     # WAF-blocked once. This engine therefore works headless, and that is the
     # family's "the user agent comes from the browser, not a literal" rule
-    # (§8) being the difference between data and a block page.
+    # being the difference between data and a block page.
     #
     # Headful is still the default because it is still better: interleaved
     # over 8 rounds on one address, headful was served 8/8 and headless 6/8,
@@ -1093,6 +1113,10 @@ def parse_args():
                         "with no display.")
     args = p.parse_args()
     env_config.apply(args)
+    if args.category:
+        logger.warning("--category %r is accepted and ignored: a Medium row has "
+                       "no category column. The story's own tags are in the "
+                       "`tags` column.", args.category)
     if not args.url:
         p.error("no --url given, and MEDIUM_URL is not set in the environment "
                 "or in .env.")

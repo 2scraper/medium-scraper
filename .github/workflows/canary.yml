@@ -20,7 +20,7 @@ name: canary
 #
 # Three days rather than one on purpose: with a single page the pagination is
 # never exercised, which is exactly how a silently-dead page walk survives in
-# this family (§11).
+# this family.
 #
 # HEADLESS, on a bare runner, AND THAT IS A REAL TEST
 # ---------------------------------------------------
@@ -37,23 +37,28 @@ name: canary
 #
 # It goes through the ENVIRONMENT rather than a commented-out --proxy line,
 # because env_config.py already reads exactly that variable, a credential
-# must never reach a command line (§3), and an unset secret arrives as an
+# must never reach a command line, and an unset secret arrives as an
 # empty string which the loader treats as "not configured". One line is
 # correct with and without it.
 #
-# WHAT FAILS THE BADGE AND WHAT ONLY WARNS
-# ----------------------------------------
-# A block (exit 3) WARNS: Cloudflare's managed challenge tracks the address's
-# recent request rate, and a shared runner's rate is not something this
-# workflow controls, so a red badge would say something about the runner
-# rather than about this code. A check that is always red teaches everyone to
-# ignore checks. But a warning must not read as a pass either, so every
-# warning path also writes to the step summary saying in words that the
-# canary did not test anything today.
+# WHAT FAILS THE BADGE
+# --------------------
+# Only a run that actually read Medium is green. A block (exit 3), a run that
+# never got its pages (exit 5), zero rows (exit 4), or a coverage floor being
+# missed all FAIL the job. A green canary that tested nothing is worse than a
+# red one: it says the site was checked when it was not.
 #
-# Parsing zero rows from a page the site plainly served (exit 4), or a
-# coverage floor being missed, DOES fail — that is the regression this exists
-# to catch.
+# A block is not a defect in this code, but it is not a pass either, so each
+# scrape is given a second chance before it counts: on exit 3 the step waits
+# two minutes and runs once more in a fresh browser. Cloudflare's challenge
+# here tracks the address's recent request RATE, and a rest is what measurably
+# clears it. If it is still refused after that, the job goes red and the
+# annotation says it was a refusal, not a parser regression. Setting a
+# MEDIUM_PROXY secret gives the canary an exit whose rate it controls.
+#
+# A partial run (exit 6) passes only through the data checks below: it read
+# real rows from the site, and the floors judge whether the parser still
+# works on them.
 
 on:
   schedule:
@@ -101,32 +106,21 @@ jobs:
         # the job, not the shell's errexit.
         run: |
           set +e
-          python3 playwright_scraper.py \
-            --url "https://medium.com/tag/python/archive/${{ steps.day.outputs.date }}" \
-            --pages 3 --delay 20 --retries 3 --retry-delay 30 --headless \
-            --out canary_archive --format json \
-            --dump-html canary_archive.html
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
-
-      - name: Interpret the archive exit code
-        run: |
-          case "${{ steps.archive.outputs.exit_code }}" in
-            0) echo "::notice::Archive walk complete." ;;
-            3)
-              echo "::warning::Blocked before parsing (exit 3) from a bare GitHub runner. Cloudflare's challenge here tracks the address's recent request RATE, which a shared runner does not control — so this says nothing about this code and the run is not failed. It also means the site-side check did NOT happen today."
-              echo "A runner address met Cloudflare's refusal. The parser was not exercised. Set a \`MEDIUM_PROXY\` secret to give this canary an exit whose request rate it controls; a block would then fail the job, which is the point." >> "$GITHUB_STEP_SUMMARY" ;;
-            4)
-              echo "::error::Ran fine and parsed 0 rows (exit 4) from a tag archive that normally holds ~100 stories a day. The legacy payload (window[\"obvInit\"]) or its references shape has most likely moved — this is exactly the regression this canary exists to catch. The HTML dump in the artefacts tells you which."
-              exit 1 ;;
-            6)
-              echo "::warning::Partial run (exit 6). The commonest cause here is the address being refused partway through the walk: a day archive is 2.3 MB and one address went from serving a whole day to refused inside three of them. canary_archive.meta.json carries the stop_reason and which pages failed." ;;
-            *)
-              echo "::error::Unexpected exit ${{ steps.archive.outputs.exit_code }}."
-              exit 1 ;;
-          esac
+          for attempt in 1 2; do
+            python3 playwright_scraper.py \
+              --url "https://medium.com/tag/python/archive/${{ steps.day.outputs.date }}" \
+              --pages 3 --delay 20 --retries 3 --retry-delay 30 --headless \
+              --out canary_archive --format json \
+              --dump-html canary_archive.html
+            code=$?
+            [ "$code" = 3 ] && [ "$attempt" = 1 ] || break
+            echo "::notice::Archive walk refused (exit 3); resting 120s and trying once more."
+            sleep 120
+          done
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
 
       - name: Sanity-check the archive run
-        if: steps.archive.outputs.exit_code == '0' || steps.archive.outputs.exit_code == '6'
+        if: always() && (steps.archive.outputs.exit_code == '0' || steps.archive.outputs.exit_code == '6')
         shell: python
         run: |
           import json, sys
@@ -135,6 +129,8 @@ jobs:
           rows = json.loads(Path("canary_archive.json").read_text())
           meta = json.loads(Path("canary_archive.meta.json").read_text())
           fail = []
+          if not rows:
+              fail.append("the archive run wrote no rows")
 
           # Floors, not exact figures. Three measured days were 128, 97 and
           # 98 stories; a floor of 40 for a whole day leaves room for a quiet
@@ -168,7 +164,7 @@ jobs:
 
           # `position` restarts at 1 on every page, so the column is
           # worthless without `page` beside it — and a page number that was
-          # never threaded through is invisible to every other check (§18).
+          # never threaded through is invisible to every other check.
           pairs = {(r.get("page"), r.get("position")) for r in rows}
           if len(pairs) != len(rows):
               fail.append("page+position is not unique across the run")
@@ -185,17 +181,26 @@ jobs:
         id: feed
         env:
           MEDIUM_PROXY: ${{ secrets.MEDIUM_PROXY }}
+        # Runs even when the archive half failed, so one red run still says
+        # which of the two paths broke.
+        if: always()
         run: |
           set +e
           sleep 30
-          python3 playwright_scraper.py \
-            --url "https://medium.com/tag/python" \
-            --retries 3 --retry-delay 30 --headless \
-            --out canary_feed --format json --dump-html canary_feed.html
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          for attempt in 1 2; do
+            python3 playwright_scraper.py \
+              --url "https://medium.com/tag/python" \
+              --retries 3 --retry-delay 30 --headless \
+              --out canary_feed --format json --dump-html canary_feed.html
+            code=$?
+            [ "$code" = 3 ] && [ "$attempt" = 1 ] || break
+            echo "::notice::Tag feed refused (exit 3); resting 120s and trying once more."
+            sleep 120
+          done
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
 
       - name: Sanity-check the tag-feed run
-        if: steps.feed.outputs.exit_code == '0'
+        if: always() && (steps.feed.outputs.exit_code == '0' || steps.feed.outputs.exit_code == '6')
         shell: python
         run: |
           import json, sys
@@ -245,16 +250,26 @@ jobs:
                   print("::error::%s" % f)
               sys.exit(1)
 
-      - name: Interpret the tag-feed exit code
+      - name: Verdict — green only if both halves read Medium
+        # Exit 0 and exit 6 have already been judged by the data checks
+        # above, which fail the job on their own. Everything else fails here,
+        # with what it means in words.
+        if: always()
         run: |
-          case "${{ steps.feed.outputs.exit_code }}" in
-            0) echo "::notice::Tag feed complete." ;;
-            3) echo "::warning::Tag feed blocked (exit 3) — see the note on the archive step." ;;
-            4)
-              echo "::error::Parsed 0 rows from a tag feed the site served. The Apollo state or its Post shape has moved."
-              exit 1 ;;
-            *) echo "::warning::Tag feed exited ${{ steps.feed.outputs.exit_code }}." ;;
-          esac
+          fail=0
+          for half in "archive:${{ steps.archive.outputs.exit_code }}" "feed:${{ steps.feed.outputs.exit_code }}"; do
+            name=${half%%:*}; code=${half#*:}
+            case "$code" in
+              0) echo "::notice::$name: complete." ;;
+              6) echo "::warning::$name: partial run (exit 6); its rows passed the data checks, see the meta.json artefact for which pages failed." ;;
+              3) echo "::error::$name: blocked (exit 3) on both attempts. Medium's Cloudflare refused this runner's address, so the parser was NOT tested today. This is an access failure, not a parser regression; a MEDIUM_PROXY secret gives the canary an exit whose request rate it controls."; fail=1 ;;
+              4) echo "::error::$name: ran and parsed 0 rows (exit 4) from a listing that normally holds dozens of stories. The payload shape has most likely moved; the HTML dump in the artefacts tells you which."; fail=1 ;;
+              5) echo "::error::$name: the pages were never obtained (exit 5): a navigation timeout or a refused scroll batch with nothing gathered."; fail=1 ;;
+              "") echo "::error::$name: the scrape step did not run."; fail=1 ;;
+              *) echo "::error::$name: unexpected exit $code."; fail=1 ;;
+            esac
+          done
+          exit $fail
 
       - name: Upload what the run actually saw
         # On EVERY run, passing or not: a canary that only keeps its

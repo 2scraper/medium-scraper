@@ -25,12 +25,12 @@ for a reason worth recording. Medium is not a shop: it has no price, no
 currency, no discount, no stock and no brand, and there is no measurement to
 write down beside those names because there is nothing on the page to
 measure. Six columns null on every row of every run of every mode is exactly
-what §9 says must not exist, so they are not here.
+a column that should not exist, so they are not here.
 
 What IS kept, byte-identical and in order, is the family prefix — `source`,
 `scraped_at`, `url`, `sku`, `title` — so one column name works across the
 family and a consumer reading six of these repos reads the same first five
-columns in the same order (§9).
+columns in the same order.
 
 Two family columns are absent for measured reasons rather than definitional
 ones, and those measurements belong here:
@@ -53,11 +53,15 @@ disagreeing.
 Everything below is row-class-agnostic: pass `row_cls` so an empty CSV still
 gets the right header for the mode that produced it.
 """
+import contextlib
 import csv
 import json
+import os
+import tempfile
+import threading
 from dataclasses import dataclass, asdict, field, fields
 from datetime import datetime, timezone
-from typing import Optional, List, Set, Sequence, Any, Type
+from typing import Optional, List, Set, Sequence, Any, Type, Tuple
 
 
 # The host a row came from. It genuinely varies on Medium: a story lives on
@@ -81,7 +85,7 @@ class Post:
     # imported or cross-posted story points at ANOTHER SITE — 4 of the 20
     # entries in one tag feed's JSON-LD pointed at habr.com and dev.to. A
     # parser that trusts the canonical writes habr.com into a Medium row
-    # while every other column still looks right (FINDINGS.md §5).
+    # while every other column still looks right.
     # `canonical_url` below carries it where it differs, which is a genuinely
     # useful column and not a substitute for this one.
     url: str = ""
@@ -124,8 +128,8 @@ class Post:
     # NOT `virtuals.recommends`, which sits beside it, is populated on 128 of
     # 128 archive posts, and is the retired pre-2017 recommend count: 25
     # against a `totalClapCount` of 248 on the same story. Reading it would
-    # have filled this column completely and wrongly, which is the failure
-    # §10 exists to catch.
+    # have filled this column completely and wrongly, which is why the
+    # suite asserts values and not coverage.
     claps: Optional[int] = None
     responses: Optional[int] = None
     # Minutes, as Medium computes them — a float, not a rounded "15 min read".
@@ -172,7 +176,7 @@ class Post:
     # The fetch this row came from, and its position within it. Unique as a
     # pair across a run; `smoke_test.py` asserts it, because `position`
     # restarts at 1 on every page and the column is worthless without `page`
-    # beside it (§18).
+    # beside it.
     page: Optional[int] = None
     position: Optional[int] = None
 
@@ -203,7 +207,7 @@ def dedupe_by_key(rows: Sequence[Any], seen: Set[str], key: str = "sku") -> List
     than its siblings do: a scroll batch re-parses the WHOLE feed, cards
     already read included, so every batch after the first arrives mostly
     duplicate by design. A batch that drops all of its rows is the signal
-    that the feed is exhausted, which is §7's data-based terminating
+    that the feed is exhausted, which is the data-based terminating
     condition and the only one available here.
 
     A row with no key is always kept: there is nothing to check a duplicate
@@ -244,12 +248,95 @@ def _csv_value(v: Any) -> Any:
     return v
 
 
+# A cell starting with one of these is executed by Excel, Google Sheets and
+# LibreOffice. Every string in a row was written by whoever wrote the story:
+# titles, subtitles, author names and tags are all third-party text.
+CSV_FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+# Spreadsheets treat a leading apostrophe as "the rest is text" and do not
+# show it; a consumer parsing the CSV with `csv` sees it, which is why the
+# count goes in the sidecar instead of staying silent.
+CSV_FORMULA_ESCAPE = "'"
+
+
+def _csv_escape(v: Any) -> Tuple[Any, bool]:
+    """Neutralise a formula-shaped cell. Returns (value, was_escaped).
+
+    Only STRINGS are touched: turning the number -5 into the text '-5 would
+    break every sum a consumer writes over the column. CSV only — the JSON
+    output keeps the site's bytes, and `csv_cells_escaped` in the sidecar
+    declares that the two files differ.
+    """
+    if isinstance(v, str) and v.startswith(CSV_FORMULA_LEADS):
+        return CSV_FORMULA_ESCAPE + v, True
+    return v, False
+
+
+_UMASK_LOCK = threading.Lock()
+
+
+def _current_umask() -> int:
+    """The process umask. Python can only read it by setting it, so it is 0
+    for an instant; the lock keeps two writers from interleaving that."""
+    with _UMASK_LOCK:
+        umask = os.umask(0)
+        os.umask(umask)
+    return umask
+
+
+@contextlib.contextmanager
+def _atomic(path: str, newline: Optional[str] = None):
+    """Write to a temporary file beside `path`, then rename over it.
+
+    Every write here replaces a file a previous run may have left, and the
+    invariant this module exists to protect is that a bad run never destroys
+    the last good data (`save` refuses an empty result for the same reason).
+    Writing in place gives that up at the worst moment: a kill, a full disk
+    or a crash halfway through `json.dump` leaves a TRUNCATED file where a
+    complete one was, and the sidecar beside it still describes the old run.
+
+    The temporary file lives in the SAME directory, because a rename across
+    filesystems is not atomic and degrades to an interruptible copy. `fsync`
+    before the rename is what makes it hold after a power loss and not only
+    after a crash.
+
+    NamedTemporaryFile creates the file 0600 and a rename keeps that. An
+    existing destination keeps its own mode (someone may have tightened it on
+    purpose); a new one gets exactly what `open(path, "w")` would have given
+    it, `0o666 & ~umask`. A fixed 0644 would be wrong both ways: wider than a
+    077 umask asks for, narrower than a 002 one.
+    """
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", newline=newline, dir=directory,
+        prefix=os.path.basename(path) + ".", suffix=".tmp", delete=False)
+    try:
+        with handle:
+            yield handle
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            mode = os.stat(path).st_mode & 0o777
+        except OSError:
+            mode = 0o666 & ~_current_umask()
+        os.chmod(handle.name, mode)
+        os.replace(handle.name, path)
+    except BaseException:
+        # Leave the destination untouched: a failed write must not be visible.
+        try:
+            os.unlink(handle.name)
+        except OSError:
+            pass
+        raise
+
+
 def write_json(rows: Sequence[Any], path: str) -> None:
-    with open(path, "w", encoding="utf-8") as f:
+    with _atomic(path) as f:
         json.dump([asdict(r) for r in rows], f, ensure_ascii=False, indent=2)
 
 
-def write_csv(rows: Sequence[Any], path: str, row_cls: Type = Product) -> None:
+def write_csv(rows: Sequence[Any], path: str, row_cls: Type = Product) -> int:
+    """Write the rows; return how many cells were formula-neutralised."""
     # An empty result still gets the header row. A zero-byte file makes a
     # consumer fail on read (no columns to parse) instead of reading a valid
     # table with zero rows — and "an empty result is still a well-formed
@@ -258,11 +345,23 @@ def write_csv(rows: Sequence[Any], path: str, row_cls: Type = Product) -> None:
     # The header comes from `row_cls`, not from the first row, so an empty
     # run still writes the columns of the mode that produced it.
     fieldnames = [f.name for f in fields(row_cls)]
-    with open(path, "w", encoding="utf-8", newline="") as f:
+    escaped = 0
+    # newline="" is the csv module's requirement and has to survive the move
+    # into the temp file, or every row gains a stray CR on Windows.
+    with _atomic(path, newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for r in rows:
-            writer.writerow({k: _csv_value(v) for k, v in asdict(r).items()})
+            row = {}
+            for k, v in asdict(r).items():
+                # Escape AFTER `_csv_value`: a list joined into one cell is
+                # text too, and its first element can be formula-shaped
+                # while the list itself is not a string.
+                value, was_escaped = _csv_escape(_csv_value(v))
+                row[k] = value
+                escaped += was_escaped
+            writer.writerow(row)
+    return escaped
 
 
 # Exit code used when a run completes but produced nothing. Distinct from 1
@@ -274,19 +373,17 @@ EXIT_NO_PRODUCTS = 4
 # search genuinely matched nothing" from "something stood between us and the
 # content". See product_parser.detect_bot_challenge.
 #
-# On this site this code specifically does NOT cover the three ways to get a
-# real page with no products on it: a `/p/<slug>` discovery hub, which
-# answers 200 with banners and carousels and no stories; a tag whose feed
-# matches nothing ("Oops, produk nggak ditemukan"); and one page past the
-# end of a category listing. All three are EXIT_NO_PRODUCTS — the request
-# was served exactly as asked and simply has no products on it. Reporting
-# any of them as blocked would send a user hunting for a proxy problem that
-# does not exist.
+# On this site this code specifically does NOT cover a real page with no
+# stories on it: a tag whose feed is empty, an author with nothing published,
+# or a day archive the site redirected up to its month view. Those are
+# EXIT_NO_PRODUCTS — the request was served exactly as asked and simply holds
+# nothing. Reporting any of them as blocked would send a user hunting for a
+# proxy problem that does not exist.
 #
-# What EXIT_BLOCKED means here is unusually literal: this site refuses a
-# address it has scored NOTHING at all. No status code, no interstitial, no
-# vendor marker — the HTTP/2 stream is reset and the run sees a connection
-# error rather than a page.
+# What EXIT_BLOCKED means here is one of Medium's two Cloudflare refusals,
+# both HTTP 403: the WAF block page ("Sorry, you have been blocked", which
+# carries no widget at all) and the managed challenge ("Just a moment...").
+# See the README's "What Medium does when it refuses".
 EXIT_BLOCKED = 3
 
 # Exit code for a run that gathered SOME rows and then stopped early — a
@@ -347,7 +444,7 @@ def write_run_meta(out_prefix: str, meta: dict) -> str:
     both complete, and between runs of different `mode`.
     """
     path = f"{out_prefix}.meta.json"
-    with open(path, "w", encoding="utf-8") as f:
+    with _atomic(path) as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
     print(f"[+] Wrote run metadata -> {path} (status={meta.get('status')})")
     return path
@@ -382,7 +479,7 @@ def run_meta(status: str, stop_reason: str, pages_requested: int,
     in archive mode — the DAYS a run covered and any day that redirected.
     A redirect is the thing worth recording: a tag day with no stories does
     not 404, it redirects up to the month view, which is a different
-    renderer holding a different set of stories (FINDINGS.md §4).
+    renderer holding a different set of stories.
 
     `pages_failed` lists the pages that did not yield data, by number.
     `pages_completed` alone was enough only while pages were fetched strictly
@@ -406,14 +503,15 @@ def run_meta(status: str, stop_reason: str, pages_requested: int,
     }
     if extra:
         # Merged rather than nested under a key, so a consumer reads
-        # `shop_rating` at the top level beside `products`. Run fields win a
+        # `tag_total_posts` at the top level beside `products`. Run fields win a
         # name collision: a caller cannot accidentally overwrite `status`.
         meta.update({k: v for k, v in extra.items() if k not in meta})
     return meta
 
 
 def save(rows: Sequence[Any], out_prefix: str, fmt: str,
-         allow_empty: bool = False, row_cls: Type = Product) -> int:
+         allow_empty: bool = False, row_cls: Type = Product,
+         stats: Optional[dict] = None) -> int:
     """Write JSON/CSV and return a process exit code.
 
     Returns 0 when rows were written, EXIT_NO_PRODUCTS when there were none.
@@ -429,6 +527,9 @@ def save(rows: Sequence[Any], out_prefix: str, fmt: str,
 
     `allow_empty=True` is for the legitimate case: a filter that genuinely
     matches nothing, where an empty file is the correct output.
+
+    Facts about the write go into `stats` rather than the return value,
+    because the return IS the exit code every engine exits with.
     """
     if not rows and not allow_empty:
         print(f"[!] 0 products — refusing to write {out_prefix}.json/.csv, so an "
@@ -440,8 +541,15 @@ def save(rows: Sequence[Any], out_prefix: str, fmt: str,
         write_json(rows, f"{out_prefix}.json")
         print(f"[+] Saved {len(rows)} products -> {out_prefix}.json")
     if fmt in ("csv", "both"):
-        write_csv(rows, f"{out_prefix}.csv", row_cls=row_cls)
+        escaped = write_csv(rows, f"{out_prefix}.csv", row_cls=row_cls)
         print(f"[+] Saved {len(rows)} products -> {out_prefix}.csv")
+        if stats is not None:
+            stats["csv_cells_escaped"] = escaped
+        if escaped:
+            print(f"[!] {escaped} CSV cell(s) began with a formula character "
+                  f"and were prefixed with {CSV_FORMULA_ESCAPE!r} so a "
+                  f"spreadsheet reads them as text. The JSON output is "
+                  f"unchanged — see csv_cells_escaped in the sidecar.")
     return 0 if rows else EXIT_NO_PRODUCTS
 
 
@@ -508,7 +616,9 @@ def finish_run(rows: Sequence[Any], out_prefix: str, fmt: str,
     # names has a hole for every name nobody added to it.
     complete = stop_reason in COMPLETE_STOP_REASONS and not pages_failed
     row_cls = ROW_CLASS_BY_MODE.get(mode, Product)
-    rc = save(rows, out_prefix, fmt, allow_empty=allow_empty, row_cls=row_cls)
+    save_stats: dict = {}
+    rc = save(rows, out_prefix, fmt, allow_empty=allow_empty, row_cls=row_cls,
+              stats=save_stats)
     wrote_output = bool(rows) or allow_empty
 
     if wrote_output:
@@ -519,12 +629,14 @@ def finish_run(rows: Sequence[Any], out_prefix: str, fmt: str,
             pages_requested=pages_requested, pages_completed=pages_completed,
             pages_failed=pages_failed, mode=mode, source=source,
             start_url=start_url, final_url=final_url, products=len(rows),
-            extra=extra))
+            # The caller's `extra` wins a collision: housekeeping must never
+            # silently drop site data.
+            extra={**save_stats, **(extra or {})}))
 
     if not rows:
         # Nothing gathered at all, and WHY decides the code. The three
         # outcomes are genuinely different things and a pipeline branches on
-        # them (§8: blocked is not empty is not partial):
+        # them (blocked is not empty is not partial):
         #
         #   blocked          something stood between the run and the content
         #   did not complete we never reached the site — a dead proxy, a
