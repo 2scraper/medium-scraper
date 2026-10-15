@@ -54,8 +54,9 @@ engines relaunch the context between attempts for exactly this reason.
 **Do not buy a captcha solve for either.** A managed challenge carries no
 sitekey at all — measured 0 `data-sitekey` attributes and 0 iframes, with
 `cType: 'managed'` in Cloudflare's own config. There is nothing to hand
-2Captcha, so this scraper never spends a solve on a block and nothing is ever
-charged for one.
+2Captcha, so this scraper never sends a block to a solver. (A rendered
+reCAPTCHA widget, not seen on Medium in testing, is the only paid path, and
+it is limited to one solve per page.)
 
 **What does exhaust an address is volume.** A day archive is 2.3 MB, and one
 address went from serving a whole day to the hard WAF refusal inside three of

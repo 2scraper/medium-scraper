@@ -12,7 +12,7 @@ Three things are different about this ENGINE:
 
 * **PASS `--chromium-path`.** pyppeteer's own bundled Chromium is build
   117.0.5938.0 — two years old — and because the User-Agent is built from the
-  browser's OWN version (§8: never a hardcoded literal), this engine
+  browser's OWN version (never a hardcoded literal), this engine
   truthfully announces `Chrome/117`. Medium's Cloudflare refused that three
   times out of three. Pointed at an installed Chrome with `--chromium-path`
   the same engine returned 53 rows on the first attempt. This is not a
@@ -55,7 +55,7 @@ from typing import List, Optional
 # that whole mechanism only works if importing this module actually requires
 # the driver. With the import hidden inside _Session.open(), the module
 # imports cleanly with no pyppeteer installed at all, the group never skips,
-# and CI cannot notice a broken import (§10).
+# and CI cannot notice a broken import.
 from pyppeteer import launch, connect
 
 from captcha_solver import (detect_recaptcha_v3, detect_recaptcha_in_page,
@@ -324,7 +324,7 @@ class _Session:
 # ---------------------------------------------------------------------------
 # Only "how to ask this driver" lives here. pyppeteer takes `() => expr` like
 # Playwright and unlike Selenium, which is exactly why page_flow names
-# operations rather than passing JavaScript across the boundary (§1).
+# operations rather than passing JavaScript across the boundary.
 def _count(session, selector: str) -> int:
     try:
         return len(session.bridge.run(session.page.querySelectorAll(selector)))
@@ -341,8 +341,8 @@ def _sleep(ms: int) -> None:
 # endpoint can be refused while the HTML keeps answering 200. Counting the
 # refusals is what separates a feed that ran out (COMPLETE) from one whose
 # next batch was refused (PARTIAL) — without it the two are the same
-# observation and a throttled run reports "complete" holding its first batch
-# (§7). All three engines count this, so all three reach the same verdict.
+# observation and a throttled run reports "complete" holding its first batch.
+# All three engines count this, so all three reach the same verdict.
 _GRAPHQL_PATH = "/graphql/"
 
 
@@ -408,7 +408,7 @@ def _min_matches(args, html: str = "") -> int:
 
 def _classify(session, html: str, status=None) -> str:
     # `status` POSITIONAL and second, matching the other two engines and the
-    # callee's real signature (§17).
+    # callee's real signature.
     return page_flow.classify(html, status, _current_url(session))
 
 
@@ -416,7 +416,7 @@ def _parse_for_mode(html: str, url: str, args, page_num: int = 1) -> List:
     return parse_posts(html, url, page=page_num, mode=args.mode)
 
 
-def handle_captcha_if_present(session, args) -> bool:
+def handle_captcha_if_present(session, args, budget) -> bool:
     """Detect and solve a challenge. True if something was solved."""
     html = _content(session)
     if html is None:
@@ -446,6 +446,10 @@ def handle_captcha_if_present(session, args) -> bool:
     if not args.twocaptcha_key:
         logger.warning("No 2captcha API key, so this challenge cannot be "
                        "solved — continuing with whatever the page holds.")
+        return False
+    if not budget.spend():
+        # Checked BEFORE the purchase, and shared with the other call site:
+        # see page_flow.SolveBudget.
         return False
     try:
         token = solve_recaptcha(challenge, args.twocaptcha_key,
@@ -501,19 +505,25 @@ def _fetch_one_page(session, args, pool, page_num: int,
     block_retries = 0 if not page_flow.RETRY_ON_BLOCKED else (
         args.proxy_block_retries if has_pool
         else page_flow.BLOCK_RETRIES_WITHOUT_POOL)
-    solves_bought = 0
+    # One allowance for every attempt and both call sites (SolveBudget).
+    budget = page_flow.SolveBudget()
     html, state, load_failed = None, "ok", False
 
     for block_attempt in range(block_retries + 1):
         load_failed = False
+        # The navigation's HTTP status for the classifier; see the
+        # Playwright engine. None for a scroll batch.
+        nav_status = None
 
         if url is not None:
             logger.info("Fetching page %d/%d: %s", page_num, args.pages, url)
             for attempt in range(1, args.retries + 1):
                 try:
-                    session.bridge.run(session.page.goto(
+                    response = session.bridge.run(session.page.goto(
                         url, {"waitUntil": "domcontentloaded",
                               "timeout": 60000}))
+                    nav_status = (getattr(response, "status", None)
+                                  if response is not None else None)
                     load_failed = False
                     break
                 except Exception as e:  # noqa: BLE001
@@ -577,11 +587,14 @@ def _fetch_one_page(session, args, pool, page_num: int,
         if load_failed:
             break
 
-        if handle_captcha_if_present(session, args):
+        if handle_captcha_if_present(session, args, budget):
+            # The page was reloaded after the solve, so the status belongs
+            # to a document that is no longer there.
+            nav_status = None
             _sleep(1000)
 
         html = _content(session) or ""
-        state = _classify(session, html)
+        state = _classify(session, html, nav_status)
 
         if page_flow.is_unpainted(state, html):
             wait_timeout = page_flow.content_timeout_ms(args.mode)
@@ -593,12 +606,10 @@ def _fetch_one_page(session, args, pool, page_num: int,
                 lambda sel: _count(session, sel), _sleep,
                 _ready_selector(args), _min_matches(args, html), wait_timeout)
             html = _content(session) or html
-            state = _classify(session, html)
+            state = _classify(session, html, nav_status)
 
-        if (page_flow.should_solve(state)
-                and solves_bought < page_flow.SOLVES_PER_PAGE):
-            solves_bought += 1
-            if handle_captcha_if_present(session, args):
+        if page_flow.should_solve(state) and budget.available():
+            if handle_captcha_if_present(session, args, budget):
                 _sleep(1000)
                 html = _content(session) or html
                 state = _classify(session, html)
@@ -630,7 +641,7 @@ def _fetch_one_page(session, args, pool, page_num: int,
                 # new context, while waiting inside the same context cleared
                 # none. `page_flow.RETRY_NEEDS_FRESH_CONTEXT` says so, and a
                 # constant no engine consulted would be dead policy dressed
-                # up as enforcement (§17).
+                # up as enforcement.
                 #
                 # NOT relaunched over --cdp-endpoint: a Scraping Browser
                 # profile allows one live connection, so reconnecting risks
@@ -714,7 +725,16 @@ def _fetch_one_page(session, args, pool, page_num: int,
         logger.info("Saved the snapshot the parser sees to %s (%d bytes).",
                     dump_path, len(html or ""))
 
-    products = _parse_for_mode(html or "", _current_url(session), args, page_num)
+    # The state policy decides whether this page is parsed at all, not only
+    # whether it is waited for and scrolled. A page classified `empty` is the
+    # site's own "nothing here" answer; parsing it anyway emitted rows from
+    # whatever else the page carried, and reported them as hits.
+    if page_flow.should_parse(state):
+        products = _parse_for_mode(html or "", _current_url(session), args, page_num)
+    else:
+        products = []
+        logger.info("Page %d is %s, which the state policy does not parse.",
+                    page_num, state)
     logger.info("Parsed %d row(s) from page %d.", len(products), page_num)
 
     # The size of the tag's WHOLE catalogue, where Medium states one — 257,497
@@ -756,7 +776,7 @@ def _fetch_one_page(session, args, pool, page_num: int,
         # with reading time, word count and language); `apollo` carries claps
         # and responses but no reading time on a tag feed; `jsonld` and `dom`
         # carry neither. Reported rather than warned about, because which one
-        # answers is a property of the URL (§9).
+        # answers is a property of the URL.
         from collections import Counter
         views = Counter(p.data_source for p in products)
         logger.info("Rows by view on page %d: %s.", page_num,
@@ -785,7 +805,7 @@ def scrape(args) -> int:
                        "the remote browser has its own exit.")
         pool = None
 
-    # Two shapes of pagination, and the URL picks which (§7). A day archive
+    # Two shapes of pagination, and the URL picks which. A day archive
     # is a real independent address; the other three modes have no address
     # for batch 2 and advance by scrolling.
     by_url = paginates_by_url(args.url)
@@ -797,7 +817,7 @@ def scrape(args) -> int:
                            page_flow.concurrency_refusal(args.url))
         else:
             # A DOCUMENTED ENGINE LIMIT, in the same class as this family's
-            # "Selenium cannot authenticate a remote CDP endpoint" (§6): the
+            # "Selenium cannot authenticate a remote CDP endpoint": the
             # worker pool is implemented in the Playwright engine only. Said
             # out loud rather than run as one worker quietly, which would
             # look like the flag did something.
@@ -820,7 +840,7 @@ def scrape(args) -> int:
 
         elif by_url:
             seen_keys.update(p.sku for p in first.products if p.sku is not None)
-            # VERIFY before planning (§7). A tag day with no stories does not
+            # VERIFY before planning. A tag day with no stories does not
             # 404 — it redirects up to the month view, which is a different
             # renderer holding a different set of stories.
             drift = redirected_away(args.url, first.final_url or args.url)
@@ -979,23 +999,26 @@ def parse_args():
                    help="Which view the URL is. Inferred from the URL by "
                         "default; passing one that disagrees is an error.")
     p.add_argument("--category", default=None,
-                   help="Label to tag output rows with. Filled from the URL "
-                        "by default.")
-    p.add_argument("--pages", type=int, default=1,
+                   help="Accepted so a command line shared with the other "
+                        "scrapers in this family still parses, and NOT used: "
+                        "a Medium row has no category column (its tags are in "
+                        "`tags`). A warning says so when it is passed.")
+    p.add_argument("--pages", type=page_flow.at_least("--pages", 1), default=1,
                    help=f"Number of pages to walk (default 1, cap {PAGE_CAP}). "
                         f"In --mode archive a page is one day with its own "
                         f"address; every other mode has no per-page address, "
                         f"so a page there is one settled scroll batch.")
-    p.add_argument("--delay", type=float, default=3.0,
+    p.add_argument("--delay", type=page_flow.at_least("--delay", 0, float), default=3.0,
                    help="Delay between batches, seconds (default 3.0).")
-    p.add_argument("--concurrency", type=int, default=1, metavar="N",
+    p.add_argument("--concurrency", type=page_flow.at_least("--concurrency", 1), default=1, metavar="N",
                    help="Accepted for family compatibility and not "
                         "implemented in this engine: the worker pool lives in "
                         "playwright_scraper.py, and this engine walks archive "
                         "days one at a time with identical output.")
     p.add_argument("--retries", type=page_flow.attempts, default=3,
                    help="Attempts per page load before giving up (default 3).")
-    p.add_argument("--retry-delay", type=float, default=2.0,
+    p.add_argument("--retry-delay",
+                   type=page_flow.at_least("--retry-delay", 0, float), default=2.0,
                    help="Seconds before the first page-load retry, doubling "
                         "thereafter (default 2.0)")
     p.add_argument("--format", choices=["json", "csv", "both"], default="both")
@@ -1018,7 +1041,8 @@ def parse_args():
                         "mid-listing here.")
     p.add_argument("--proxy-shuffle", action="store_true",
                    help="Shuffle the pool at startup.")
-    p.add_argument("--proxy-block-retries", type=int, default=2,
+    p.add_argument("--proxy-block-retries",
+                   type=page_flow.at_least("--proxy-block-retries", 0), default=2,
                    help="Retries from other exits when a page is refused.")
     p.add_argument("--twocaptcha-key", default=None, help="2captcha.com API key")
     p.add_argument("--allow-empty", action="store_true",
@@ -1062,7 +1086,7 @@ def parse_args():
     # `_chrome_ua` builds, from the browser's own version — was never
     # WAF-blocked once. This engine therefore works headless, and that is the
     # family's "the user agent comes from the browser, not a literal" rule
-    # (§8) being the difference between data and a block page.
+    # being the difference between data and a block page.
     #
     # Headful is still the default because it is still better: interleaved
     # over 8 rounds on one address, headful was served 8/8 and headless 6/8,
@@ -1082,6 +1106,10 @@ def parse_args():
                         "with no display.")
     args = p.parse_args()
     env_config.apply(args)
+    if args.category:
+        logger.warning("--category %r is accepted and ignored: a Medium row has "
+                       "no category column. The story's own tags are in the "
+                       "`tags` column.", args.category)
     if not args.url:
         p.error("no --url given, and MEDIUM_URL is not set in the environment "
                 "or in .env.")

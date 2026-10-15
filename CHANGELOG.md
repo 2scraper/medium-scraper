@@ -11,6 +11,20 @@ empty output file.
 
 ## [Unreleased]
 
+> **Behaviour changes in this batch:**
+> - `--pages 0`, `--concurrency 0`, and a negative `--delay`, `--retry-delay`
+>   or `--proxy-block-retries` are now usage errors (exit 2) naming the flag,
+>   as is a negative `--retries` on `scraper_api_client.py`.
+> - Output files are written to a temporary file and renamed into place. A
+>   new file gets the mode `open()` would have given it (`0o666 & ~umask`); an
+>   existing one keeps its mode.
+> - CSV cells beginning with `=`, `+`, `-`, `@`, a tab, CR or LF get a leading
+>   apostrophe (CSV only; JSON is unchanged, numbers are never touched) and
+>   the sidecar records `csv_cells_escaped`.
+> - A page classified `empty` is no longer parsed, so it contributes 0 rows.
+> - `--category` is documented as accepted and unused, and warns when passed.
+> - The canary is red when it did not read Medium (exit 3, 4 or 5).
+
 > **Behaviour change:** `--retries 0` is now a usage error (exit 2). It used
 > to be accepted and made the page-load loop unreachable, so nothing was
 > fetched and the engine reported the browser's own blank page as a result:
@@ -19,6 +33,42 @@ empty output file.
 > "try once and do not retry".
 
 ### Fixed
+
+- **A paid solve could be bought once per retry.** The check right after
+  navigation called the solver with no budget, so one page with no proxy pool
+  could buy four solves against a limit of one (measured with detection forced
+  and the solver stubbed). One `page_flow.SolveBudget` per page now covers both
+  call sites in all three engines, is checked before each purchase and is not
+  reset by a retry or relaunch. The README no longer says nothing can ever be
+  charged: a rendered reCAPTCHA, not seen on Medium in testing, is the one paid
+  path, at most once per page.
+- **An interrupted write destroyed the previous output.** `out.json`,
+  `out.csv` and `out.meta.json` were truncated in place; a crash mid-write
+  left a 13-byte invalid JSON or an empty CSV. Writes are now atomic.
+- **Spreadsheet formulas from story text reached the CSV unchanged.**
+- **The parse ignored the state policy.** `should_parse` gated the wait and the
+  scroll but not the parse, so a page classified `empty` emitted rows.
+- **The HTTP status never reached the classifier** in Playwright and pyppeteer,
+  so a bare 403/429/5xx with no recognisable body was not read as a refusal.
+  Selenium exposes no status and still classifies on the body.
+- **The credential scan read nothing from a clone under a `venv` directory**
+  and reported it clean. Exclusions are now judged relative to the repo, a
+  scan of zero files fails, and data files (`.json`, `.html`, `.csv`, ...) and
+  renamed `.env.*` files are read too; a hit in a git-ignored file is a warning.
+- **Multi-page and top-level HTML dumps were not git-ignored** (`x.page3`,
+  `root.html`, `live/`, `out/` and similar).
+- **Comments described another site**, two cited a file that does not exist,
+  and the sample check counted a column `Post` does not have.
+- **A 401 from `--cdp-endpoint` claimed the login lasts "about a day".** That
+  figure was never measured; the message now says the credentials were
+  refused.
+- **The README's exit 5 row** now says what 5 means here: nothing was
+  obtained (remote API error, navigation timeout, dead proxy, refused batch).
+- **Public files cited private notes by section number.** Removed, with a
+  suite check that fails if one comes back.
+- `tests.yml` no longer carries inline copies of the `--help` and sample
+  checks; it runs `.github/ci_checks.py`, and the suite fails if a workflow
+  imports a local module inline.
 
 - **`--retries 0` fetched nothing and called it a result.** The load loop is
   `range(1, retries + 1)`, so 0 never runs it and the engine judged
@@ -201,7 +251,7 @@ contract and no tests. Nothing of that survives except the licence.
   archive days, and **55 rows from an author page against a local browser's
   10**: that feed extends by scrolling, the scroll is refused from an
   ordinary address and is not refused from the Scraping Browser's exit.
-- **`--fingerprint` works, and the five defects §16 names are all absent** —
+- **`--fingerprint` works, and the five known fingerprint defects are all absent** —
   the user agent reaches the browser, the locale is derived by LANGUAGE
   (`jp` → `ja-JP`, not `jp-JP`), the timezone is applied, `--tags Windows`
   is accepted, and a 401 carries no key. One NEW defect of the same family

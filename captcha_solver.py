@@ -13,15 +13,16 @@ Medium's own reCAPTCHA Enterprise is on every page it serves — 3 to 4 `g-recap
 occurrences and 15 to 17 of `recaptcha` — wired, mounted, never challenged.
 That is precisely why neither string is in
 `product_parser.BOT_CHALLENGE_MARKERS`: a marker present on every good page
-is worse than no marker (§18), and including it made a perfectly good 364 KB
+is worse than no marker, and including it made a perfectly good 364 KB
 tag feed report "challenge: recaptcha" before it was measured.
 
 What Medium serves when it refuses is Cloudflare's MANAGED challenge, and a
 managed challenge has no widget and no sitekey at all — `cType: 'managed'`,
 0 `data-sitekey` attributes, 0 iframes on the one measured. So there is
 nothing here for a solver to answer, and `page_flow.STATE_POLICY` marks that
-state retry-but-do-not-solve: nothing is ever charged for a block on this
-site. This module is a contingency, not part of the happy path — a bot
+state retry-but-do-not-solve: a block on this site is never sent to a
+solver, and a rendered reCAPTCHA (the one paid path) gets at most one solve
+per page. This module is a contingency, not part of the happy path — a bot
 manager's configuration can change between deploys, and a scraper that
 cannot name what stopped it is much harder to fix.
 

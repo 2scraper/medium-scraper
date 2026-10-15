@@ -33,6 +33,20 @@ _*.py
 *_debug.html
 *_debug.png
 *.html.page*
+# `--dump-html X --pages N` writes X.page1..X.pageN whatever X is called, and
+# `--dump-html X.html --pages 1` writes X.html wherever it was asked to. A
+# top-level .html is never part of this repo, so all of them are ignored, and
+# so are the kinds of directory a live session drops captures into.
+*.page[0-9]*
+/*.html
+live/
+out/
+output/
+runs/
+results/
+tmp/
+scratch/
+dumps/
 
 # --- captures kept for parser work ---------------------------------------
 # The smoke suite's fixtures are committed (trimmed, inside smoke_test.py);
@@ -82,7 +96,7 @@ secrets*
 # recoverable only because that repo was private at the time. On 2026-09-17
 # a sibling had an untracked `.env.bak` holding a 32-hex key in a PUBLIC
 # repository, one `git add -A` from publication. Craigslist was fixed then
-# and the fix never reached anyone else, which is §16's rule unapplied: when
-# you fix one, check the siblings.
+# and the fix never reached anyone else: when you fix one, check the
+# siblings.
 .env*
 !.env.example

@@ -49,83 +49,6 @@ jobs:
           pip install pytest
           pytest -q
 
-      - name: Every CLI answers --help
-        # A crash in argparse setup or a bad local import is invisible to the
-        # test suite but breaks the first thing any user types. The engine
-        # libraries are deliberately NOT installed here, so an ImportError
-        # naming one of them is expected; anything else is a failure.
-        run: |
-          python - <<'EOF'
-          import subprocess, sys
-
-          ENGINE_LIBS = ("playwright", "pyppeteer", "selenium", "webdriver_manager")
-          failed = []
-
-          for script in ["playwright_scraper.py", "puppeteer_scraper.py",
-                         "selenium_scraper.py", "scraper_api_client.py",
-                         "fingerprint_client.py", "env_config.py",
-                         "diff_runs.py"]:
-              r = subprocess.run([sys.executable, script, "--help"],
-                                 capture_output=True, text=True)
-              if r.returncode == 0:
-                  print(f"ok       {script}")
-                  continue
-              blob = r.stdout + r.stderr
-              if "ModuleNotFoundError" in blob and any(l in blob for l in ENGINE_LIBS):
-                  print(f"skipped  {script} (engine library not installed here)")
-                  continue
-              print(f"FAILED   {script}\n{blob}")
-              failed.append(script)
-
-          sys.exit(1 if failed else 0)
-          EOF
-
-      - name: Committed sample output is real
-        # The README links to these two files, so a push without them ships
-        # broken links. And a sample invented by hand drifts from the schema and
-        # teaches readers the wrong field names, so these are cut from a real
-        # run rather than written by hand.
-        run: |
-          python - <<'EOF'
-          import csv, json, sys
-          from pathlib import Path
-
-          MARKERS = ("sample-product-", "example brand", "sample product",
-                     "product description text", "lorem ipsum")
-
-          fail = []
-          for name in ("sample_output.json", "sample_output.csv"):
-              if not Path(name).is_file():
-                  fail.append(f"{name} is missing — regenerate it from a real run")
-
-          if not fail:
-              rows = json.loads(Path("sample_output.json").read_text())
-              if not rows:
-                  fail.append("sample_output.json is empty")
-              blob = json.dumps(rows).lower()
-              hit = [m for m in MARKERS if m in blob]
-              if hit:
-                  fail.append(f"sample_output.json looks fabricated: {hit}")
-
-              # Column set must match what the writers actually produce.
-              from output_writer import Product
-              from dataclasses import asdict
-              expected = list(asdict(Product()).keys())
-              for i, row in enumerate(rows):
-                  if list(row.keys()) != expected:
-                      fail.append(f"row {i} columns drifted from output_writer.Product")
-                      break
-
-              with open("sample_output.csv", newline="", encoding="utf-8") as f:
-                  header = next(csv.reader(f))
-              if header != expected:
-                  fail.append("sample_output.csv header drifted from output_writer.Product")
-
-          for line in fail:
-              print("FAILED:", line)
-          sys.exit(1 if fail else 0)
-          EOF
-
       - name: Config reporter runs with no .env present
         run: python env_config.py
 
@@ -151,10 +74,10 @@ jobs:
         # endpoint, a planted 32-hex key and a planted http proxy URL.
         run: python3 .github/ci_checks.py --secret-check
 
-      - name: The repo's own --help and sample checks agree with this workflow
-        # ci_checks.py implements all three checks. The two above are also
-        # done as workflow steps for the clearer failure output; running them
-        # here as well is what keeps the two from drifting apart again.
+      - name: Every CLI answers --help, and the committed sample is real
+        # One implementation, in ci_checks.py, rather than inline copies here
+        # that drift from it (an inline copy is the one place an import of
+        # the wrong row class can hide until the first push).
         run: python3 .github/ci_checks.py --help-check --sample-check
 
   engine-smoke:

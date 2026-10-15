@@ -45,7 +45,7 @@ of them is a PERSON rather than the site:
 
 Medium stories are bylined public writing, but republishing a named person's
 prose in a scraper's test corpus is a separate act from the site showing it
-on its own page (§10, where a sibling repo committed a real customer's
+on its own page (where a sibling repo committed a real customer's
 review, name and photo ids). The STRUCTURE is what the checks need — the
 payload's keys, the URL shapes, the ids, the clap and response counts, the
 reading times, the tags, the timestamps, the paywall flags — and all of that
@@ -375,7 +375,7 @@ def _build(name, html, url, keep, names):
     # every page Medium serves — refused and served alike — which is exactly
     # why `challenge-platform` is not in any marker set, and the suite
     # asserts that fact against these fixtures. A fixture without it would
-    # let the marker back in unnoticed (§18).
+    # let the marker back in unnoticed.
     cf = _CF_SCRIPT_RE.search(html)
     if cf:
         parts.append(cf.group(0))
@@ -449,7 +449,7 @@ def depersonalise(text, names):
     # credentials and they expired the moment the page was fetched, but a
     # 32-hex run in a public repo reads as a live key to every scanner that
     # looks — including this repo's own — and the checks need the SHAPE of
-    # the script, not the value (§10).
+    # the script, not the value.
     # Replaced with a NON-HEX run, not with zeros: a 32-character string of
     # zeros is still 32 hex characters and still trips the repo's own
     # credential grep, which is how the first version of this scrub passed

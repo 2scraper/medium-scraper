@@ -113,7 +113,7 @@ def _cache_path(cache_dir: str, params: dict, generate: bool,
     fingerprint 5393493 from disk and raised nothing, because a real key had
     fetched the same parameters earlier. A user whose fingerprint
     subscription lapsed would see `--fingerprint` keep working on their own
-    machine and 401 on a fresh one (§16: a path that looks like it works).
+    machine and 401 on a fresh one (a path that looks like it works).
 
     Keying on the key costs one extra fetch per key and makes a 401 a 401.
     """
@@ -264,7 +264,7 @@ def playwright_context_kwargs(fp: dict) -> dict:
     # 2026-09-11: a fingerprint stating `deviceScaleFactor: 1.25` produced a
     # browser reporting `window.devicePixelRatio === 1`, so the identity
     # contradicted itself on an axis any fingerprinter reads for free. Same
-    # shape as the three defects §16 lists -- a key the API returns that
+    # shape as three earlier fingerprint defects -- a key the API returns that
     # nothing applies -- and found the same way, by comparing the live
     # browser against the fingerprint rather than by reading the code.
     scale = (fp.get("screen") or {}).get("deviceScaleFactor")
@@ -345,7 +345,7 @@ def main() -> int:
     # loader. It used to read `os.environ` alone, which meant a key put in
     # `.env` exactly as README and .env.example instruct worked for every
     # engine and failed here with "No API key" — a documented mechanism not
-    # applied on one path, which is the shape of half the defects §16 lists.
+    # applied on one path, which is the shape of half the fingerprint defects found so far.
     # `.env` has to be LOADED before it can be read: `env_value` looks at
     # os.environ, which `load_env` is what fills from the file. Calling it
     # here rather than relying on an engine having called it is the whole

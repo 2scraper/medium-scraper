@@ -34,7 +34,8 @@ REPO = Path(__file__).resolve().parent.parent
 ENGINE_LIBS = ("playwright", "pyppeteer", "selenium", "webdriver_manager")
 
 CLIS = ["playwright_scraper.py", "puppeteer_scraper.py", "selenium_scraper.py",
-        "scraper_api_client.py", "fingerprint_client.py", "env_config.py"]
+        "scraper_api_client.py", "fingerprint_client.py", "env_config.py",
+        "diff_runs.py"]
 
 SAMPLE_FILES = ("sample_output.json", "sample_output.csv")
 
@@ -77,7 +78,7 @@ CREDENTIAL_ALLOWED = (
     # pasted while debugging. An allowlist entry would have switched the
     # check off exactly there. A sibling repo's copy of this script FAILED ON
     # ITS OWN MAIN for the opposite reason: its fixtures were neither
-    # allowlisted nor written this way (§17).
+    # allowlisted nor written this way.
     "{login}", "{user}", "password}@", "***", "u:p@h",
     "login:password@host:port",     # the shape a refusal message prints
     "user:secret@",                 # the proxy-pool masking fixtures
@@ -115,7 +116,7 @@ SCANNED_SUFFIXES = (".py", ".md", ".txt", ".yml", ".yaml", ".example")
 # into pip's vendored code and flags a 32-hex string in `_elffile.py` as
 # key-shaped. Correct about the string, wrong about the file — and it is the
 # FIRST thing a new user sees from `python3 smoke_test.py`. A guard people
-# have to argue with is one they learn to suppress (CLAUDE.md §22).
+# have to argue with is one they learn to suppress.
 #
 # Deliberately NOT a narrowing of what gets scanned: an untracked file is
 # still read, because a key pasted into a scratch file beside the scripts is
@@ -142,16 +143,53 @@ def _is_in_virtualenv(path):
     return False
 
 
+# Read too, though nothing here is source: data and dumps are where a key or
+# a session arrives by accident (a fixture captured with a key in a request,
+# a `--dump-html` of a page that echoed one), and `.env.bak`/`.env.local`
+# are what a working `.env` gets renamed to. These shapes are git-ignored by
+# design, so a hit in an IGNORED one is reported as a warning — the ignore
+# rule is what keeps it out of a commit, and a local key in a local file is
+# not a defect. A hit in one git would NOT ignore fails like any other.
+DATA_SUFFIXES = (".json", ".html", ".csv", ".toml", ".cfg", ".ini")
+DATA_NAMES = ("Dockerfile",)
+
+# Skipped by name, and only RELATIVE to the repository: tested against the
+# path's absolute parts, a clone that merely lives under a directory called
+# `venv` excluded every file, and the scan reported "0 files scanned,
+# nothing credential-shaped" — a clean pass over nothing.
+SKIPPED_DIRS = {".git", "__pycache__", ".venv", "venv", ".pytest_cache"}
+
+
+def _is_data_file(path):
+    name = path.name
+    return (path.suffix in DATA_SUFFIXES or name in DATA_NAMES
+            or (name.startswith(".env.") and name != ".env.example"))
+
+
 def scanned_files():
     for path in sorted(REPO.rglob("*")):
-        if not path.is_file() or path.suffix not in SCANNED_SUFFIXES:
+        if not path.is_file():
             continue
-        if any(part in {".git", "__pycache__", ".venv", "venv"}
-               for part in path.parts):
+        if path.suffix not in SCANNED_SUFFIXES and not _is_data_file(path):
+            continue
+        if any(part in SKIPPED_DIRS for part in path.relative_to(REPO).parts):
             continue
         if _is_in_virtualenv(path):
             continue
         yield path
+
+
+def _git_ignored(paths):
+    """The subset of `paths` git would ignore; empty outside a checkout."""
+    if not paths:
+        return set()
+    try:
+        done = subprocess.run(
+            ["git", "check-ignore", "--stdin"], cwd=REPO, capture_output=True,
+            text=True, input="\n".join(str(p.relative_to(REPO)) for p in paths))
+    except FileNotFoundError:
+        return set()
+    return {REPO / line for line in done.stdout.splitlines() if line}
 
 
 def help_check():
@@ -213,32 +251,41 @@ def sample_check():
         failed.append("sample_output.csv header differs from output_writer.Product")
 
     if not failed:
-        discounted = sum(1 for r in rows if r.get("original_price"))
+        paywalled = sum(1 for r in rows if r.get("is_paywalled"))
         print(f"ok       {len(rows)} rows, {len(expected)} columns, "
-              f"{discounted} discounted, schema matches")
+              f"{paywalled} paywalled, schema matches")
     return failed
 
 
 def secret_check():
-    failed = []
+    failed, warned = [], []
     scanned = 0
-    for path in scanned_files():
+    files = list(scanned_files())
+    ignored_data = _git_ignored([p for p in files if _is_data_file(p)])
+    for path in files:
         scanned += 1
+        sink = warned if path in ignored_data else failed
         for lineno, line in enumerate(
                 path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
             rel = path.relative_to(REPO)
 
             if CREDENTIALLED_URL.search(line) and not any(
                     token in line for token in CREDENTIAL_ALLOWED):
-                failed.append(f"{rel}:{lineno} looks like a URL with real "
-                              f"credentials in it")
+                sink.append(f"{rel}:{lineno} looks like a URL with real "
+                            f"credentials in it")
 
             for match in HEX32.findall(line):
                 if any(token in line.lower() for token in HEX32_ALLOWED):
                     continue
-                failed.append(f"{rel}:{lineno} contains {match[:6]}… — a "
-                              f"32-char hex string, the shape of a 2captcha key")
+                sink.append(f"{rel}:{lineno} contains {match[:6]}… — a "
+                            f"32-char hex string, the shape of a 2captcha key")
 
+    for line in warned:
+        print(f"WARNING  {line} (git-ignored, so not a commit risk while the "
+              f"ignore rule holds; delete it if it is not yours)")
+    if scanned == 0:
+        failed.append("0 files scanned — a scan that read nothing cannot say "
+                      "the repository is clean")
     if not failed:
         print(f"ok       {scanned} files scanned, nothing credential-shaped")
     return failed
