@@ -65,6 +65,10 @@ on:
     # 06:20 UTC. Off the hour, because everything else in the world runs on
     # it and a queued runner adds nothing but latency.
     - cron: "20 6 * * *"
+    # Mondays: the same jobs, WITH the paid secrets (proxy, Scraping Browser,
+    # captcha key). On the daily run above those secrets read as empty, so
+    # it takes the free no-secret route and bills nothing.
+    - cron: "20 6 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -99,7 +103,7 @@ jobs:
       - name: Scrape three days of a tag archive (the legacy-payload path)
         id: archive
         env:
-          MEDIUM_PROXY: ${{ secrets.MEDIUM_PROXY }}
+          MEDIUM_PROXY: ${{ (github.event_name != 'schedule' || github.event.schedule == '20 6 * * 1') && secrets.MEDIUM_PROXY || '' }}
         # `set +e`: GitHub runs `run:` steps under `bash -e`, so a non-zero
         # command aborts the step BEFORE the following echo and
         # continue-on-error does not change that — it stops the step failing
@@ -180,7 +184,7 @@ jobs:
       - name: Scrape a tag feed (the modern-payload path)
         id: feed
         env:
-          MEDIUM_PROXY: ${{ secrets.MEDIUM_PROXY }}
+          MEDIUM_PROXY: ${{ (github.event_name != 'schedule' || github.event.schedule == '20 6 * * 1') && secrets.MEDIUM_PROXY || '' }}
         # Runs even when the archive half failed, so one red run still says
         # which of the two paths broke.
         if: always()
