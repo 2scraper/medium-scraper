@@ -11,6 +11,8 @@ empty output file.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-16
+
 > **Behaviour changes in this batch:**
 > - `--pages 0`, `--concurrency 0`, and a negative `--delay`, `--retry-delay`
 >   or `--proxy-block-retries` are now usage errors (exit 2) naming the flag,
@@ -31,6 +33,19 @@ empty output file.
 > exit 3 or 4 with a 39-byte "capture", in tens of milliseconds. If a
 > script of yours passes 0, pass **1**: the flag counts ATTEMPTS, so 1 means
 > "try once and do not retry".
+
+> **Correction to v0.1.0.** That release's README said of Medium's two
+> refusal pages: *"Neither is solvable … there is nothing to hand a captcha
+> solver."* The first half is true — the WAF refusal carries no widget. The
+> second is not: a Cloudflare **managed challenge** publishes no sitekey *in
+> the markup*, but Cloudflare passes `sitekey`, `action`, `cData` and
+> `chlPageData` to `turnstile.render()` once, those arguments can be captured
+> with an init script, and 2Captcha solves the result as
+> `TurnstileTaskProxyless`. The sentence told readers a 2Captcha key would
+> not help them here, which is a claim about the product and was wrong. What
+> is true is narrower and is now what the README says: **this repo does not
+> implement that interception**, because the challenge here is transient and
+> a retry in a fresh context cleared 9 of 9 measured.
 
 ### Fixed
 
@@ -69,7 +84,6 @@ empty output file.
 - `tests.yml` no longer carries inline copies of the `--help` and sample
   checks; it runs `.github/ci_checks.py`, and the suite fails if a workflow
   imports a local module inline.
-
 - **`--retries 0` fetched nothing and called it a result.** The load loop is
   `range(1, retries + 1)`, so 0 never runs it and the engine judged
   `about:blank`. Three third-party audits of this family ran exactly that and
@@ -77,7 +91,6 @@ empty output file.
   `page_flow.attempts` in every entry point; a check reads the source of each
   one and calls the validator, so a new engine declaring the flag with a
   plain int fails the suite.
-
 - **A refused `--cdp-endpoint` explained the wrong cause.** Every connect
   failure was followed by the same paragraph about `profile_locked`, so an
   expired login (HTTP 401, `deny_no_user`) sent the reader looking for a
@@ -140,36 +153,6 @@ empty output file.
   `medium_posts.*`, the engines' real `--out` default.
 - Stray donor wording in `TROUBLESHOOTING.md` and in suite comments, and a
   `min_matches` check that exercised a mode named `question`.
-
-### Changed
-
-- The suite's foreign-vocabulary guard also scans `.txt` files and
-  `.dockerignore`, and knows the Q&A sibling's vocabulary. Both new halves
-  were controlled: planting the old `requirements.txt` header and the old
-  Selenium log line each turned the suite red on that check. (This entry
-  describes the old wording rather than quoting it, because CHANGELOG.md is
-  scanned too.)
-
-- `SECURITY.md` said this project has no releases or version tags; it has
-  both. "Supported versions" now names the latest release and `main`.
-
-## [0.1.1] — 2026-09-16
-
-> **Correction to v0.1.0.** That release's README said of Medium's two
-> refusal pages: *"Neither is solvable … there is nothing to hand a captcha
-> solver."* The first half is true — the WAF refusal carries no widget. The
-> second is not: a Cloudflare **managed challenge** publishes no sitekey *in
-> the markup*, but Cloudflare passes `sitekey`, `action`, `cData` and
-> `chlPageData` to `turnstile.render()` once, those arguments can be captured
-> with an init script, and 2Captcha solves the result as
-> `TurnstileTaskProxyless`. The sentence told readers a 2Captcha key would
-> not help them here, which is a claim about the product and was wrong. What
-> is true is narrower and is now what the README says: **this repo does not
-> implement that interception**, because the challenge here is transient and
-> a retry in a fresh context cleared 9 of 9 measured.
-
-### Fixed
-
 - **README no longer claims a captcha cannot be solved.** The measurements
   are unchanged — 0 `data-sitekey` attributes and 0 iframes on the managed
   challenge, 9 of 27 first attempts challenged, all 9 served on the next
@@ -184,6 +167,17 @@ empty output file.
   `test_a_challenge_is_never_paid_for_here`. Its assertions are unchanged and
   still correct; the name asserted something about 2Captcha that the test
   never measured.
+
+### Changed
+
+- The suite's foreign-vocabulary guard also scans `.txt` files and
+  `.dockerignore`, and knows the Q&A sibling's vocabulary. Both new halves
+  were controlled: planting the old `requirements.txt` header and the old
+  Selenium log line each turned the suite red on that check. (This entry
+  describes the old wording rather than quoting it, because CHANGELOG.md is
+  scanned too.)
+- `SECURITY.md` said this project has no releases or version tags; it has
+  both. "Supported versions" now names the latest release and `main`.
 
 ### Added
 
@@ -273,4 +267,5 @@ contract and no tests. Nothing of that survives except the licence.
   the engine truthfully announces `Chrome/117` — refused 3 times out of 3.
   Pointed at an installed Chrome it returned 53 rows on the first attempt.
 
+[0.2.0]: https://github.com/2scraper/medium-scraper/releases/tag/v0.2.0
 [0.1.0]: https://github.com/2scraper/medium-scraper/releases/tag/v0.1.0
