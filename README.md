@@ -1,4 +1,4 @@
-# medium-scraper
+# Medium Scraper — Stories, Claps and Full Text in Python
 
 [![release](https://img.shields.io/github/v/release/2scraper/medium-scraper?sort=semver)](https://github.com/2scraper/medium-scraper/releases)
 [![tests](https://github.com/2scraper/medium-scraper/actions/workflows/tests.yml/badge.svg)](https://github.com/2scraper/medium-scraper/actions/workflows/tests.yml)
@@ -7,6 +7,8 @@
 [![licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 [![engines](https://img.shields.io/badge/engines-Playwright%20%7C%20Selenium%20%7C%20pyppeteer%20%7C%20Scraper%20API-lightgrey)](#engines)
 [![runs without an account](https://img.shields.io/badge/runs%20without%20an%20account-yes-brightgreen)](#do-i-need-to-pay-for-anything)
+
+**Medium scraper** — an open-source (MIT) Python tool that reads medium.com tag feeds, a tag's day archives, author pages and single stories, and writes one row per story — title, author, claps, reading time and, for a single story, its full text — to JSON or CSV. On 2026-09-16 all four modes returned rows with Playwright's own bundled Chromium from an ordinary datacentre address, with no 2Captcha key and no proxy. Use it to build a dataset of the stories published under a tag, or compare two complete runs of the same mode with `diff_runs.py`.
 
 A Medium story scraper. Reads a tag feed, a tag's day archive, an author's
 profile or a single story, and writes JSON and CSV with one row per story.
@@ -319,6 +321,22 @@ The fixtures are cut from real captures by `make_fixtures.py`, which proves
 each one parses identically to its untrimmed original, column for column, and
 replaces every real author handle with a pseudonym before anything is
 written.
+
+## Guides
+
+- [How to run the 2scraper scrapers: setup, proxies, exit codes and access modes](https://2captcha.com/h/how-to-run-2scraper-open-source-scrapers) — installation, `.env`, `.meta.json` for the whole family.
+
+## Related scrapers
+
+Same CLI conventions, same output contract (one row per item, JSON or CSV, a `.meta.json` sidecar and shared exit codes):
+
+- [Perplexity scraper](https://github.com/2scraper/perplexity-scraper) — Pages and Discover articles
+- [Goodreads scraper](https://github.com/2scraper/goodreads-scraper) — Lists, author books, search, full book pages and every…
+- [Hacker News scraper](https://github.com/2scraper/hackernews-scraper) — Story lists, whole comment trees and profiles from Hacker…
+- [Snapchat scraper](https://github.com/2scraper/snapchat-scraper) — Public Snapchat profiles, Spotlight engagement and story…
+- [TikTok Ad Library scraper](https://github.com/2scraper/tiktok-ads-scraper) — Ads from TikTok's EU Ad Library
+
+All scrapers: [github.com/2scraper](https://github.com/2scraper) · Need another site? [Open a request](https://github.com/2scraper/.github/issues/new?title=%5BScraper%20request%5D%20)
 
 ## Licence
 
