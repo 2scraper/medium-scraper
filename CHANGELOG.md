@@ -14,6 +14,7 @@ empty output file.
 ### Changed
 
 - CI only: the canary now runs weekly (Mondays 06:20 UTC) and on a manual dispatch, with its optional secret `MEDIUM_PROXY` passed on every run; the daily schedule is removed.
+- README: "Related scrapers" now lists the Quora scraper as well. The smoke check that keeps a sibling site's vocabulary out of shipped files rejected any mention of that repository's name, so the link could not be added; it now skips only the README's "Related scrapers" section (up to the next heading) and still fails on the same word anywhere else in the README or in any other file.
 
 ## [0.2.0] — 2026-10-16
 
