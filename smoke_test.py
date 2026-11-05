@@ -2366,7 +2366,14 @@ def test_no_file_describes_another_site():
         if path.name == "smoke_test.py":
             continue
         checked += 1
-        lowered = path.read_text(encoding="utf-8", errors="replace").lower()
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if rel == pathlib.Path("README.md"):
+            # The README's "Related scrapers" list links sibling repositories
+            # by name on purpose. Only that section is exempt, up to the next
+            # `## ` heading; the rest of the README is still checked.
+            text = re.sub(r"(?ms)^## Related scrapers\n.*?(?=^## |\Z)", "",
+                          text)
+        lowered = text.lower()
         hits = sorted({word for word in foreign
                        if word in lowered
                        and (path.name, word) not in allowed})
