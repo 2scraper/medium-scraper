@@ -13,6 +13,8 @@ empty output file.
 
 ### Changed
 
+- CI only: the offline-checks job runs on `ubuntu-24.04` instead of `ubuntu-latest`, which moved to Ubuntu 26.04, where `actions/setup-python` has no Python 3.9 build. 3.9 stays the supported floor.
+- Docker: the image installs `libatomic1` before Playwright. Recent Playwright releases' Node driver needs it to run `playwright install` at all, and the slim base image does not ship it, so the image build failed.
 - CI only: the canary now runs weekly (Mondays 06:20 UTC) and on a manual dispatch, with its optional secret `MEDIUM_PROXY` passed on every run; the daily schedule is removed.
 - README: "Related scrapers" now lists all six related repositories; one Q&A sibling had been left out. The smoke check that keeps a sibling site's vocabulary out of shipped files rejected any mention of that repository's name, so the link could not be added; it now skips only the README's "Related scrapers" section (up to the next heading) and still fails on the same word anywhere else in the README or in any other file.
 
